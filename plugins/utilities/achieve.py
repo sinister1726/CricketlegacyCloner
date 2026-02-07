@@ -385,9 +385,22 @@ async def evaluate_and_unlock_achievements(user_id: int, match=None):
 
         for ach in achievements:
             cond = normalize_condition(ach["condition"])
-            cur, tgt = get_progress(ach, stats, match or {})
+            scope = cond.get("scope")
+            stat = cond.get("stat")
+            target = cond.get("target", 0)
 
-            if tgt > 0 and cur >= tgt:
+            current = 0
+
+            if scope == "career":
+                current = stats.get(stat, 0)
+
+            elif scope == "match":
+                current = match.get(stat, 0)
+
+            elif scope == "innings":
+                current = match.get("innings_stats", {}).get(stat, 0)
+
+            if target > 0 and current >= target:
                 await conn.execute("""
                     INSERT INTO user_achievements (user_id, achievement_id)
                     VALUES ($1,$2)
@@ -397,6 +410,7 @@ async def evaluate_and_unlock_achievements(user_id: int, match=None):
                 unlocked.append(ach)
 
         return unlocked
+
 
 
 def build_prompt(rarity: str, seed: int):
