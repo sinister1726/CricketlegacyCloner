@@ -143,44 +143,6 @@ Achievement: {ach['title']}
 """
     return await _ai(prompt)
 
-# ───────────────── ACHIEVEMENT CHECK (ADVANCE BALL USES THIS) ─────────────────
-async def check_achievements(match, user_id: int):
-    async with db.pool.acquire() as conn:
-        achievements = await conn.fetch("""
-            SELECT a.*
-            FROM achievements a
-            WHERE NOT EXISTS (
-                SELECT 1 FROM user_achievements ua
-                WHERE ua.user_id=$1 AND ua.achievement_id=a.id
-            )
-        """, user_id)
-
-        unlocked = []
-        player = match.get("players", {}).get(user_id, {})
-        team = match.get("teams", {}).get(match.get("batting_team"), {})
-
-        for ach in achievements:
-            cond = ach["condition"] or {}
-            t = cond.get("type")
-
-            if t == "batting" and player.get("runs", 0) >= cond.get("runs_gte", 0):
-                unlocked.append(ach)
-
-            elif t == "bowling" and player.get("wickets", 0) >= cond.get("wickets_gte", 0):
-                unlocked.append(ach)
-
-            elif t == "team" and team.get("runs", 0) >= cond.get("runs_gte", 0):
-                unlocked.append(ach)
-
-        for ach in unlocked:
-            await conn.execute("""
-                INSERT INTO user_achievements (user_id, achievement_id)
-                VALUES ($1,$2)
-                ON CONFLICT DO NOTHING
-            """, user_id, ach["id"])
-
-        return unlocked
-
 
 
     
