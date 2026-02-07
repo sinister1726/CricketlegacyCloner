@@ -351,9 +351,9 @@ CATEGORIES = {
     "fifties": ("⭐ Most Fifties", "fifties"),
     "centuries": ("🔥 Most Centuries", "centuries"),
     "moms": ("🏅 Most MOMs", "moms"),
-    "best_captain": ("🧑‍✈️ Best Captain", "wins") 
-    
+    "best_captain": ("🧑‍✈️ Best Captain", "wins")
 }
+
 
 async def get_home_text(user):
     uid = user.id
@@ -372,11 +372,17 @@ async def get_home_text(user):
             "Database warming up. Try again shortly."
         )
 
+    # ✅ FIX: stats can be None (new user)
+    if not stats:
+        return (
+            f"📊 <b>Welcome, {user.first_name}!</b>\n\n"
+            "⚠️ Your stats are being initialized.\n"
+            "Play at least one match and try again."
+        )
 
-    name = stats.get('first_name') or user.first_name
-    win_rate = stats.get('current_win_rate', 0)
+    name = stats.get("first_name") or user.first_name
+    win_rate = stats.get("current_win_rate", 0)
 
-    # 🚀 FIX: Formatted values as integers where applicable
     return (
         f"📊 <b>𝗪𝗲𝗹𝗰𝗼𝗺𝗲, {name}!</b>\n"
         f"🏅 <b>Global Rank:</b> #{int(stats['rank'])}\n"
@@ -389,6 +395,7 @@ async def get_home_text(user):
         "────┈┄┄╌╌╌╌┄┄┈────\n"
         "Select a category below to view Global Rankings:"
     )
+
 
 async def build_rank_text(client, uid, category_key, offset=0):
     if category_key not in CATEGORIES:
@@ -409,7 +416,7 @@ async def build_rank_text(client, uid, category_key, offset=0):
             query = f"""
                 SELECT user_id, first_name, matches,
                 {db_column} as display_val
-                FROM user_stats 
+                FROM user_stats
                 ORDER BY display_val DESC LIMIT $1 OFFSET $2
             """
         top_players = await conn.fetch(query, limit, offset)
@@ -417,8 +424,8 @@ async def build_rank_text(client, uid, category_key, offset=0):
         user_pos = await conn.fetchrow(f"""
             SELECT position, total_count FROM (
                 SELECT user_id, RANK() OVER (
-                    ORDER BY (CASE WHEN $1 = 'best_captain' 
-                              THEN (wins::float / NULLIF(matches, 0)) 
+                    ORDER BY (CASE WHEN $1 = 'best_captain'
+                              THEN (wins::float / NULLIF(matches, 0))
                               ELSE {db_column} END) DESC
                 ) as position,
                 COUNT(*) OVER() as total_count
@@ -431,85 +438,84 @@ async def build_rank_text(client, uid, category_key, offset=0):
     text += f"🔹 Your Position: {pos_text}\n\n"
 
     if not top_players:
-        text += "<i>There's nothing found in this category yet.</i>"
-        return text, 0
+        return text + "<i>No data yet.</i>", 0
 
     for i, row in enumerate(top_players, start=offset + 1):
-        p_name = row['first_name']
-        p_id = row['user_id']
+        p_name = row["first_name"] or "User"
+        val = row["display_val"]
 
-        if not p_name or p_name == "Player":
-            try:
-                u_obj = await client.get_users(p_id)
-                p_name = u_obj.first_name
-                async with db.pool.acquire() as conn:
-                    await conn.execute("UPDATE user_stats SET first_name = $1 WHERE user_id = $2", p_name, p_id)
-            except:
-                p_name = "User"
+        formatted_val = f"{val:.1f}%" if category_key == "best_captain" else f"{int(val)}"
+        text += (
+            f"{i}. <b>{p_name}</b> = <code>{formatted_val}</code> "
+            f"({int(row['matches'])} matches)\n\n"
+        )
 
-        # 🚀 FIX: Removed .0 decimals. Only win_rate keeps decimals.
-        val = row['display_val']
-        if category_key == "best_captain":
-            formatted_val = f"{val:.1f}%"
-        else:
-            formatted_val = f"{int(val)}"
+    return text, user_pos["total_count"] if user_pos else 0
 
-        text += f"{i}. <b>{p_name}</b> = <code>{formatted_val}</code> ({int(row['matches'])} matches)\n"
-        text += f"╰⊚ 🆔 <code>{p_id}</code>\n\n"
-
-    return text, user_pos['total_count'] if user_pos else 0
 
 def get_main_menu():
-    btns = []
-    row = []
+    btns, row = [], []
     for key, (label, _) in CATEGORIES.items():
         row.append(InlineKeyboardButton(label, callback_data=f"rankview:{key}:0"))
         if len(row) == 2:
             btns.append(row)
             row = []
-    if row: btns.append(row)
+    if row:
+        btns.append(row)
     return InlineKeyboardMarkup(btns)
+
 
 @Client.on_message(filters.command("user_ranks"))
 async def ranks_command(client, message: Message):
     text = await get_home_text(message.from_user)
-    # 🚀 FIX: Changed reply_text to reply_photo for asset integration
     await message.reply_photo(
         photo=LEADERBOARD_IMG,
-        caption=text, 
+        caption=text,
         reply_markup=get_main_menu()
     )
 
+
 @Client.on_callback_query(filters.regex("^rankview:"))
 async def rank_view_callback(client, query: CallbackQuery):
-    try:
-        data = query.data.split(":")
-        category = data[1]
-        offset = int(data[2])
-    except (IndexError, ValueError):
-        return await query.answer("❌ Error: Invalid callback data.", show_alert=True)
+    data = query.data.split(":")
+    category, offset = data[1], int(data[2])
 
     text, total = await build_rank_text(client, query.from_user.id, category, offset)
 
-    nav_btns = []
+    btns = []
+    nav = []
     if offset > 0:
-        nav_btns.append(InlineKeyboardButton("⬅️ Back", callback_data=f"rankview:{category}:{offset-10}"))
+        nav.append(InlineKeyboardButton("⬅️ Back", callback_data=f"rankview:{category}:{offset-10}"))
     if offset + 10 < total:
-        nav_btns.append(InlineKeyboardButton("Next ➡️", callback_data=f"rankview:{category}:{offset+10}"))
+        nav.append(InlineKeyboardButton("Next ➡️", callback_data=f"rankview:{category}:{offset+10}"))
+    if nav:
+        btns.append(nav)
 
-    btns = [nav_btns] if nav_btns else []
     btns.append([InlineKeyboardButton("🔙 Main Menu", callback_data="rank_main")])
 
-    # 🚀 FIX: Use edit_message_caption when working with photos
-    await query.message.edit_caption(
-        caption=text, 
-        reply_markup=InlineKeyboardMarkup(btns)
-    )
+    # ✅ FIX: caption-safe edit
+    try:
+        await query.message.edit_caption(
+            caption=text,
+            reply_markup=InlineKeyboardMarkup(btns)
+        )
+    except:
+        await query.message.edit_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(btns)
+        )
+
 
 @Client.on_callback_query(filters.regex("^rank_main"))
 async def rank_main_menu(client, query: CallbackQuery):
     text = await get_home_text(query.from_user)
-    await query.message.edit_caption(
-        caption=text, 
-        reply_markup=get_main_menu()
-    )
+    try:
+        await query.message.edit_caption(
+            caption=text,
+            reply_markup=get_main_menu()
+        )
+    except:
+        await query.message.edit_text(
+            text,
+            reply_markup=get_main_menu()
+        )
