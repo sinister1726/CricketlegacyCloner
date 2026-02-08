@@ -1192,188 +1192,60 @@ Give 4–5 lines:
     from plugins.game.team.over_engine import end_match
     await end_match(match)
 
-## ───────────────── END MATCH ─────────────────
+# ───────────────── END MATCH ─────────────────
 async def end_match(match, forced: bool = False):
+    import asyncio
+    import httpx
+
     client = match.get("client")
     chat_id = match.get("chat_id")
     LOG_GC_ID = -1003527724170
 
-    # ───────── EARLY FORCE-END CHECK ─────────
     balls_played = match.get("total_balls", 0)
     early_force_end = forced and balls_played < 6
 
     if not client or not chat_id:
-        print("❌ CRITICAL: client or chat_id missing in end_match")
-
-        match["bowled"] = False
-        match["batted"] = False
-        match["prompt_dispatched"] = False
+        print("❌ CRITICAL: client or chat_id missing")
         match["phase"] = "finished"
-
-        try:
-            async with db.pool.acquire() as conn:
-                await conn.execute(
-                    "UPDATE games SET status = 'ended' WHERE game_id = $1",
-                    match.get("game_id")
-                )
-        except Exception as e:
-            print("❌ DB cleanup failed in end_match:", e)
         return
 
     teams = match.get("teams", {})
-    team_a = teams.get("A", {"runs": 0, "wickets": 0})
-    team_b = teams.get("B", {"runs": 0, "wickets": 0})
+    team_a = teams.get("A", {"runs": 0, "wickets": 0, "players": []})
+    team_b = teams.get("B", {"runs": 0, "wickets": 0, "players": []})
 
-    r_a, r_b = team_a.get("runs", 0), team_b.get("runs", 0)
-    w_a, w_b = team_a.get("wickets", 0), team_b.get("wickets", 0)
+    r_a, r_b = team_a["runs"], team_b["runs"]
+    w_a, w_b = team_a["wickets"], team_b["wickets"]
 
+    # ───────── RESULT LOGIC ─────────
     if r_a > r_b:
         winner_key = "A"
         margin = f"won by {r_a - r_b} runs"
     elif r_b > r_a:
         winner_key = "B"
-        batting_players = team_b.get("players", [])
-        total_batters = len(batting_players)
-        wickets_left = max(0, total_batters - w_b - 1)
+        wickets_left = max(0, len(team_b["players"]) - w_b - 1)
         margin = f"won by {wickets_left} wickets" if wickets_left > 0 else f"won by {r_b - r_a} runs"
     else:
-        winner_key, margin = "Tie", "Match Tied!"
+        winner_key = "Tie"
+        margin = "Match Tied!"
 
     if forced:
-        winner_key, margin = "No Result", "Stopped by host."
+        winner_key = "No Result"
+        margin = "Stopped by host."
 
-    res_title = "🏏 <b>MATCH COMPLETE</b>" if winner_key != "Tie" else "🤝 <b>MATCH TIED</b>"
+    res_title = "🏏 MATCH COMPLETE" if winner_key not in ("Tie", "No Result") else "🤝 MATCH TIED"
 
-    # ───────── PLAYER OF THE MATCH (SKIPPED IF EARLY FORCE END) ─────────
-    if not early_force_end:
-        try:
-            players = match.get("players", {})
-            best_id, best_score = None, -1
+    # ───────── IMMEDIATE RESULT MESSAGE ─────────
+    await client.send_message(
+        chat_id,
+        f"{res_title}\n\n🏆 Team {winner_key} {margin}"
+    )
 
-            for uid, p in players.items():
-                runs = p.get("runs", 0)
-                wickets = p.get("wickets", 0)
-                balls = p.get("balls_faced", 0)
-                sr = (runs / balls * 100) if balls > 0 else 0
-
-                score = runs * 1.2 + wickets * 25 + sr * 0.3
-                if score > best_score:
-                    best_score = score
-                    best_id = uid
-
-            potm = players.get(best_id, {})
-            name = match.get("user_cache", {}).get(best_id, "Player")
-
-            runs = potm.get("runs", 0)
-            balls = potm.get("balls_faced", 0)
-            wickets = potm.get("wickets", 0)
-
-            runs_conceded = potm.get("runs_conceded", 0)
-            balls_bowled = potm.get("balls_bowled", 0)
-
-            sr = (runs / balls * 100) if balls > 0 else 0
-            econ = (runs_conceded / (balls_bowled / 6)) if balls_bowled > 0 else 0.0
-
-            # ─── AI ANALYSIS ───
-            import httpx
-
-            NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
-            NVIDIA_API_KEY = "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"
-
-            prompt = f"""
-You are a cricket analyst.
-Tone: funny, savage, professional.
-Short and punchy (3–4 lines).
-
-Player: {name}
-Runs: {runs}
-Strike Rate: {sr:.1f}
-Wickets: {wickets}
-Economy: {econ:.2f}
-"""
-
-            headers = {
-                "Authorization": f"Bearer {NVIDIA_API_KEY}",
-                "Content-Type": "application/json"
-            }
-
-            payload = {
-                "model": "meta/llama-3.1-70b-instruct",
-                "messages": [
-                    {"role": "system", "content": "You analyze cricket matches."},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.8,
-                "max_tokens": 160
-            }
-
-            async with httpx.AsyncClient(timeout=20) as ai:
-                r = await ai.post(NVIDIA_ENDPOINT, json=payload, headers=headers)
-                analysis = r.json()["choices"][0]["message"]["content"]
-
-            potm_text = (
-                "🏅 <b>PLAYER OF THE MATCH</b>\n"
-                "────┈┄┄╌╌╌╌┄┄┈────\n"
-                f"👤 <b>{name}</b>\n\n"
-                f"🏏 <b>Runs:</b> {runs}  |  ⚡ <b>SR:</b> {sr:.1f}\n"
-                f"🎯 <b>Wickets:</b> {wickets}  |  📉 <b>Econ:</b> {econ:.2f}\n\n"
-                f"{analysis}\n"
-                "────┈┄┄╌╌╌╌┄┄┈────\n"
-                "✨ Nexora AI"
-            )
-
-            await client.send_message(chat_id, potm_text, parse_mode=ParseMode.HTML)
-            await client.send_message(LOG_GC_ID, potm_text, parse_mode=ParseMode.HTML)
-
-        except Exception as e:
-            print("❌ POTM ERROR:", e)
-
-    # ───────── FINAL SUMMARY (SKIPPED IF EARLY FORCE END) ─────────
-    if not early_force_end:
-        try:
-            from plugins.game.team.summaries import build_match_summary
-            summary_text = await build_match_summary(client, match, winner_key)
-
-            try:
-                from plugins.utilities.graph import get_graph_buffer
-                buf = await get_graph_buffer(match)
-
-                await client.send_photo(
-                    chat_id,
-                    photo=buf,
-                    caption=f"{res_title}\n\n🏆 <b>Team {winner_key} {margin}!</b>\n\n{summary_text}",
-                    parse_mode=ParseMode.HTML
-                )
-
-                await client.send_photo(
-                    LOG_GC_ID,
-                    photo=buf,
-                    caption=f"{res_title}\n\n🏆 <b>Team {winner_key} {margin}!</b>\n\n{summary_text}",
-                    parse_mode=ParseMode.HTML
-                )
-
-            except Exception:
-                await client.send_message(
-                    chat_id,
-                    f"{res_title}\n\n🏆 <b>Team {winner_key} {margin}!</b>\n\n{summary_text}",
-                    parse_mode=ParseMode.HTML
-                )
-                await client.send_message(
-                    LOG_GC_ID,
-                    f"{res_title}\n\n🏆 <b>Team {winner_key} {margin}!</b>\n\n{summary_text}",
-                    parse_mode=ParseMode.HTML
-                )
-
-        except Exception as e:
-            print("Summary Generation Error:", e)
-
-    # ───────── CLEANUP (ALWAYS RUNS) ─────────
+    # ───────── CLEANUP FIRST (FAST EXIT) ─────────
     match["phase"] = "finished"
-    await update_game_in_db(match)
 
     try:
         from plugins.game.team.scorecard import save_match_stats
-        await save_match_stats(match, winner_key)
+        asyncio.create_task(save_match_stats(match, winner_key))
     except Exception as e:
         print("Stats Save Error:", e)
 
@@ -1387,6 +1259,95 @@ Economy: {econ:.2f}
                 match.get("game_id")
             )
     except Exception as e:
-        print("❌ Failed final DB update:", e)
+        print("❌ DB update failed:", e)
 
-    print(f"✅ Match {match.get('game_id')} cleaned up for chat {chat_id}")
+    print(f"✅ Match {match.get('game_id')} cleanup done")
+
+    # ───────── BACKGROUND TASK (AI + GRAPH + SUMMARY) ─────────
+    async def post_match_extras():
+        try:
+            # ───── PLAYER OF THE MATCH (WINNING TEAM ONLY) ─────
+            if not early_force_end and winner_key in ("A", "B"):
+                players = match.get("players", {})
+                winning_players = teams[winner_key].get("players", [])
+
+                best_id, best_score = None, -1
+                for uid in winning_players:
+                    p = players.get(uid, {})
+                    score = p.get("runs", 0) + (p.get("wickets", 0) * 25)
+                    if score > best_score:
+                        best_score = score
+                        best_id = uid
+
+                if best_id:
+                    p = players[best_id]
+                    name = match.get("user_cache", {}).get(best_id, "Player")
+
+                    # ───── AI ANALYSIS (SHORT + FAST) ─────
+                    prompt = f"""
+Player: {name}
+Runs: {p.get('runs',0)}
+Wickets: {p.get('wickets',0)}
+
+Give a short 2–3 line cricket analysis.
+"""
+
+                    payload = {
+                        "model": "meta/llama-3.1-70b-instruct",
+                        "messages": [
+                            {"role": "system", "content": "You analyze cricket matches briefly."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "temperature": 0.7,
+                        "max_tokens": 80
+                    }
+
+                    headers = {
+                        "Authorization": f"Bearer {NVIDIA_API_KEY}",
+                        "Content-Type": "application/json"
+                    }
+
+                    analysis = ""
+                    try:
+                        async with httpx.AsyncClient(timeout=8) as ai:
+                            r = await ai.post(NVIDIA_ENDPOINT, json=payload, headers=headers)
+                            analysis = r.json()["choices"][0]["message"]["content"]
+                    except Exception:
+                        analysis = "Clutch performance when it mattered most."
+
+                    potm_text = (
+                        "🏅 PLAYER OF THE MATCH\n"
+                        "──────────────\n"
+                        f"👤 {name}\n"
+                        f"🏏 Runs: {p.get('runs',0)}\n"
+                        f"🎯 Wickets: {p.get('wickets',0)}\n\n"
+                        f"{analysis}"
+                    )
+
+                    await client.send_message(chat_id, potm_text)
+                    await client.send_message(LOG_GC_ID, potm_text)
+
+            # ───── SUMMARY + GRAPH ─────
+            from plugins.game.team.summaries import build_match_summary
+            summary_text = await build_match_summary(client, match, winner_key)
+
+            caption = (
+                f"{res_title}\n\n"
+                f"🏆 Team {winner_key} {margin}\n\n"
+                f"{summary_text}"
+            )
+
+            try:
+                from plugins.utilities.graph import get_graph_buffer
+                buf = await get_graph_buffer(match)
+
+                await client.send_photo(chat_id, photo=buf, caption=caption)
+                await client.send_photo(LOG_GC_ID, photo=buf, caption=caption)
+            except Exception:
+                await client.send_message(chat_id, caption)
+                await client.send_message(LOG_GC_ID, caption)
+
+        except Exception as e:
+            print("❌ Post-match task error:", e)
+
+    asyncio.create_task(post_match_extras())
