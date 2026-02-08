@@ -50,13 +50,14 @@ CACHE_TTL = 600
 async def ensure_user_exists(conn, user):
     await conn.execute(
         """
-        INSERT INTO users (user_id, first_name)
+        INSERT INTO users (user_id, name)
         VALUES ($1, $2)
         ON CONFLICT (user_id) DO NOTHING
         """,
         user.id,
         user.first_name or "Player"
     )
+
 # 10 Minutes cache for avatars
 
 def generate_members_thumbnail(
