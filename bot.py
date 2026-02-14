@@ -2,10 +2,6 @@ import asyncio
 from pyrogram import Client, idle
 from config import Config
 from database.connection import db
-import asyncio
-from database.migrate import migrate
-import asyncio
-from database.connection import db
 from database.migrate import migrate
 
 async def initialize_database():
@@ -15,15 +11,7 @@ async def initialize_database():
     print("✅ Database connected & tables ready")
 
 async def start_nexora():
-    # 1. Initialize Database inside the running loop
-    # This fixes: RuntimeError: no running event loop
-    try:
-        await initialize_database()
-    except Exception as e:
-        print(f"❌ Database Initialization Failed: {e}")
-        return
-
-    # 2. Initialize the Bot
+    # 1. Initialize the Bot FIRST (let Pyrogram own the loop)
     bot = Client(
         "bot",
         bot_token=Config.BOT_TOKEN,
@@ -33,27 +21,32 @@ async def start_nexora():
         plugins=dict(root="plugins")
     )
 
-    # 3. Start the Client
+    # 2. Start the Client
     await bot.start()
     print("🚀 Nexora Cricket Bot is Online!")
+
+    # 3. Initialize Database AFTER bot is running
+    try:
+        await initialize_database()
+    except Exception as e:
+        print(f"❌ Database Initialization Failed: {e}")
+
     # 🔌 GLOBAL CLIENT FALLBACK (ENGINE SAFETY)
     from plugins.game.team.init import ACTIVE_MATCHES
-
     for m in ACTIVE_MATCHES.values():
         if not m.get("client"):
             m["client"] = bot
-
 
     # 4. Keep it running
     await idle()
 
     # 5. Graceful Shutdown
+    print("🛑 Shutting down...")
     await bot.stop()
     await db.close()
 
 if __name__ == "__main__":
-    # This creates the event loop and starts the async function
     try:
-        asyncio.run(start_nexora())
+        asyncio.get_event_loop().run_until_complete(start_nexora())
     except KeyboardInterrupt:
         print("👋 Bot stopped manually.")
