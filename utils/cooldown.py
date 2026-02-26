@@ -11,7 +11,6 @@ def allow(key: str, seconds: int) -> bool:
 
     COOLDOWN[key] = now
 
-    # Optional cleanup (prevent memory leak)
     if len(COOLDOWN) > 5000:
         for k, v in list(COOLDOWN.items()):
             if now - v > seconds * 2:
