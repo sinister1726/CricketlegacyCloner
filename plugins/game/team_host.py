@@ -6,7 +6,6 @@ from Assets.files import TEAM_CREATE_IMAGE
 from database.games import get_active_game, create_game, user_in_other_game
 from utils.mentions import mention_html
 
-
 @Client.on_callback_query(filters.regex("^mode_team$"))
 async def team_mode_selected(client, query):
     await query.answer()
@@ -39,14 +38,12 @@ async def team_mode_selected(client, query):
         reply_markup=buttons
     )
 
-
 @Client.on_callback_query(filters.regex("^host_select$"))
 async def confirm_host(client, query):
     user = query.from_user
     chat_id = query.message.chat.id
     group_title = query.message.chat.title or "Private Match"
 
-    # ❌ Prevent second host
     existing = await get_active_game(chat_id)
     if existing:
         return await query.answer(
@@ -54,7 +51,6 @@ async def confirm_host(client, query):
             show_alert=True
         )
 
-    # 🌍 Global game check
     other_game = await user_in_other_game(user.id, chat_id)
     if other_game:
         return await query.answer(
@@ -62,7 +58,6 @@ async def confirm_host(client, query):
             show_alert=True
         )
 
-    # ✅ CREATE GAME HERE (ONLY HERE)
     await create_game(
         chat_id=chat_id,
         mode="team",
@@ -84,3 +79,4 @@ async def confirm_host(client, query):
 async def cancel_game(client, query):
     await query.answer()
     await query.message.edit_text("`Game setup cancelled.`")
+    
