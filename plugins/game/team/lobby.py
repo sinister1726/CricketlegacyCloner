@@ -49,8 +49,6 @@ async def ensure_user_exists(conn, user):
         user.first_name or "Player"
     )
 
-# 10 Minutes cache for avatars
-
 def generate_members_thumbnail(
     cap_a_name: str,
     cap_b_name: str,
@@ -69,7 +67,6 @@ def generate_members_thumbnail(
     except:
         name_f = group_f = cap_f = ImageFont.load_default()
 
-    # ─── GROUP NAME (TOP RIGHT) ───
     draw.text(
         (W - 45, 40),
         group_name[:24].upper(),
@@ -95,7 +92,6 @@ def generate_members_thumbnail(
                 mask
             )
 
-            # ─── CAPTAIN RING ───
             ring_radius = radius + 6
             draw.ellipse(
                 (
@@ -110,7 +106,6 @@ def generate_members_thumbnail(
         except:
             pass
 
-    # ─── ALIGNMENT ───
     left_circle  = (W // 2 - 362, H // 2 + 2)
     right_circle = (W // 2 + 375, H // 2 + 2)
     radius_val = 194
@@ -118,7 +113,6 @@ def generate_members_thumbnail(
     paste_circle(cap_a_avatar_path, left_circle, radius_val)
     paste_circle(cap_b_avatar_path, right_circle, radius_val)
 
-    # ─── CAP TEXT (BETWEEN AVATAR & NAME) ───
     draw.text(
         (left_circle[0], left_circle[1] + radius_val + 20),
         "👑 CAPTAIN",
@@ -135,7 +129,6 @@ def generate_members_thumbnail(
         anchor="mm"
     )
 
-    # ─── CAPTAIN NAMES (MOVED DOWN) ───
     draw.text(
         (left_circle[0], left_circle[1] + radius_val + 65),
         cap_a_name.upper(),
@@ -156,7 +149,6 @@ def generate_members_thumbnail(
     base.save(buf, "PNG", optimize=False)
     buf.seek(0)
     return buf
-
 
 async def get_fast_avatar(client, user_id):
     """Avoids re-downloading if already in cache"""
@@ -181,13 +173,10 @@ async def create_teams(client, message):
     chat_id = message.chat.id
     user = message.from_user
 
-    # 1. Immediate DB Check (Essential for game state)
     game = await get_active_game(chat_id)
     if not game:
         return await message.reply_text("No active game right now. Start one to play 🏏")
 
-    # 2. Fast Memory Initialization
-    # We do this BEFORE the reply to ensure the timer can attach instantly
     if chat_id not in ACTIVE_MATCHES:
         ACTIVE_MATCHES[chat_id] = {
             "chat_id": chat_id,
@@ -205,26 +194,20 @@ async def create_teams(client, message):
     match = ACTIVE_MATCHES[chat_id]
     match["phase"] = "TEAM_A_JOIN"
 
-    # 3. Fire-and-Forget DB Update (Don't wait for it to finish)
     asyncio.create_task(set_phase(chat_id, "TEAM_A_JOIN"))
-
-    # 4. Instant Feedback
+    
     await message.reply_text(
         "🎉 **𝗧𝗘𝗔𝗠 𝗖𝗥𝗘𝗔𝗧𝗜𝗢𝗡 𝗦𝗧𝗔𝗥𝗧𝗘𝗗**\n"
         "🌊 **Join Team A:** /join_teamA"
     )
-
-    # 5. Timer Management
+    
     if match.get("join_timer_task"):
         match["join_timer_task"].cancel()
 
     match["join_timer_task"] = asyncio.create_task(team_a_timer(client, chat_id))
-    
-# --- UPGRADED TIMERS WITH PHASE CHECKS ---
 
 async def team_a_timer(client, chat_id):
     try:
-        # ⏳ 30 seconds left
         await asyncio.sleep(15)
 
         match = ACTIVE_MATCHES.get(chat_id)
@@ -233,7 +216,6 @@ async def team_a_timer(client, chat_id):
 
         await client.send_message(chat_id, "⏳ **30 seconds left** to join Team A /join_teamA ")
 
-        # ⚠️ 10 seconds left
         await asyncio.sleep(20)
 
         match = ACTIVE_MATCHES.get(chat_id)
@@ -242,10 +224,8 @@ async def team_a_timer(client, chat_id):
 
         await client.send_message(chat_id, "⚠️ **10 seconds remaining** to join Team A /join_teamA ")
 
-        # ⏱️ Final 10 seconds
         await asyncio.sleep(10)
 
-        # 🔄 Switch to Team B
         await set_phase(chat_id, "TEAM_B_JOIN")
         match = ACTIVE_MATCHES.get(chat_id)
         if match:
@@ -263,7 +243,6 @@ async def team_a_timer(client, chat_id):
 
 async def team_b_timer(client, chat_id):
     try:
-        # ⏳ 30 seconds left
         await asyncio.sleep(15)
 
         match = ACTIVE_MATCHES.get(chat_id)
@@ -272,7 +251,6 @@ async def team_b_timer(client, chat_id):
  
         await client.send_message(chat_id, "⏳ **30 seconds left** to join Team B /join_teamB")
 
-        # ⚠️ 10 seconds left
         await asyncio.sleep(20)
 
         match = ACTIVE_MATCHES.get(chat_id)
@@ -281,10 +259,8 @@ async def team_b_timer(client, chat_id):
 
         await client.send_message(chat_id, "⚠️ **10 seconds remaining** to join Team B /join_teamB")
 
-        # ⏱️ Final 10 seconds
         await asyncio.sleep(10)
 
-        # 🔒 Lock teams
         await set_phase(chat_id, "READY")
         match = ACTIVE_MATCHES.get(chat_id)
         if match:
@@ -302,9 +278,6 @@ import asyncio
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 
-# Assuming these are imported from your game logic files
-# from plugins.game.team.init import get_active_game, set_phase
-
 @Client.on_message(filters.command("rejointeams") & filters.group)
 @host_only
 async def rejoin_teams(client, message):
@@ -317,8 +290,7 @@ async def rejoin_teams(client, message):
     game = await get_active_game(chat_id)
     if not game or game["phase"] not in ["READY", "TOSS_WAIT"]:
         return await message.reply_text("⚠️ **Cannot rejoin now. Match has already started!**")
-
-    # 1️⃣ Update BOTH DB and RAM
+        
     await set_phase(chat_id, "JOINING") 
     match["phase"] = "JOINING"
 
@@ -329,23 +301,19 @@ async def rejoin_teams(client, message):
         parse_mode=ParseMode.HTML
     )
 
-    # 2️⃣ Cancel old timer and start new one
     if match.get("join_timer_task"):
         match["join_timer_task"].cancel()
 
     match["join_timer_task"] = asyncio.create_task(rejoin_timer(client, chat_id))
 
 async def rejoin_timer(client, chat_id):
-    """Background task to lock teams after 2 minutes."""
     try:
         await asyncio.sleep(60)
 
-        # 🚨 SAFETY CHECK: If match ended or was deleted, stop immediately
         match = ACTIVE_MATCHES.get(chat_id)
         if not match or match.get("phase") != "JOINING":
             return
 
-        # Lock the phase back to READY
         await set_phase(chat_id, "READY")
         match["phase"] = "READY"
         match["join_timer_task"] = None
@@ -374,11 +342,9 @@ async def join_team_logic(client, message):
             "😴 No match running right now.\nStart one first and I’m in 🏏"
         )
 
-    # 🧠 Determine team from command
     cmd = message.command[0].lower()
     target_team = "A" if "teama" in cmd else "B"
-
-    # 1️⃣ CHECK: Already in THIS match
+    
     if (
         user.id in match["teams"]["A"]["players"]
         or user.id in match["teams"]["B"]["players"]
@@ -388,7 +354,6 @@ async def join_team_logic(client, message):
             "No need to join twice — this isn’t multiverse cricket 🌀"
         )
 
-    # 2️⃣ CHECK: Already playing in ANOTHER active match
     async with db.pool.acquire() as conn:
         active_game = await conn.fetchrow(
             """
@@ -409,7 +374,6 @@ async def join_team_logic(client, message):
                 parse_mode=ParseMode.HTML
             )
 
-    # 3️⃣ PHASE CHECK
     current_phase = match.get("phase")
     allowed_phase = f"TEAM_{target_team}_JOIN"
     if current_phase not in (allowed_phase, "JOINING"):
@@ -418,22 +382,17 @@ async def join_team_logic(client, message):
             "Missed the bus, maybe next match 🚌💨"
         )
 
-    # 4️⃣ ADD PLAYER (Memory + DB) — FIXED
     async with db.pool.acquire() as conn:
-        # ✅ CRITICAL FIX: ensure user exists in `users` table
         await ensure_user_exists(conn, user)
 
-        # DB insert (FK safe now)
         await conn.execute(
             "INSERT INTO game_players (game_id, user_id, team) VALUES ($1, $2, $3)",
             match["game_id"], user.id, target_team
         )
 
-    # 🔄 Sync Memory
     match["teams"][target_team]["players"].append(user.id)
     match["user_cache"][user.id] = user.first_name
 
-    # 🎙️ RANDOM CRICKET JOIN COMMENTARY
     join_messages = [
         f"🔥 <b>{user.first_name}</b> walks into <b>Team {target_team}</b> with quiet confidence.\n"
         "Solid stance, steady heartbeat — this could be serious business 👀",
@@ -459,12 +418,10 @@ async def members(client, message):
     user = message.from_user
     match = ACTIVE_MATCHES.get(chat_id)
 
-    # 1️⃣ Fetch Game from DB as fallback
     game = await get_active_game(chat_id)
     if not match and not game:
         return await message.reply_text("❌ **No active game available.**")
 
-    # 2️⃣ Cooldown Logic (Host bypass)
     host_id = match.get("host_id") if match else game.get("host_id")
     if user.id != host_id:
         now = time.time()
@@ -475,7 +432,6 @@ async def members(client, message):
             )
         GROUP_COOLDOWN[chat_id] = now
 
-    # 3️⃣ Phase Detection
     current_phase = match.get("phase") if match else game.get("phase")
     if match and (match.get("striker") or match.get("current_bowler")):
         current_phase = "LIVE"
@@ -493,7 +449,6 @@ async def members(client, message):
             return "𝗦𝗲𝘁𝘁𝗶𝗻𝗴 𝗨𝗽"
         return "𝗝𝗼𝗶𝗻𝗶𝗻𝗴..."
 
-    # 4️⃣ Team List Formatter
     def format_team_list(team_code):
         players = match.get("teams", {}).get(team_code, {}).get("players", []) if match else []
         if not players:
@@ -514,7 +469,6 @@ async def members(client, message):
             lines.append(f"    {i}. {name}{cap}{tag}{out}")
         return "\n".join(lines)
 
-    # 5️⃣ Scores
     overs_val = match.get("overs") if match else game.get("overs", "N/A")
     host_name = match.get("host_name") if match else "Host"
 
@@ -527,7 +481,6 @@ async def members(client, message):
             if k == "A": score_a = f"{r}/{w} ({ov} ov)"
             else: score_b = f"{r}/{w} ({ov} ov)"
 
-    # 6️⃣ UI Text
     text = (
         "📊 **𝗠𝗔𝗧𝗖𝗛 𝗢𝗩𝗘𝗥𝗩𝗜𝗘𝗪**\n"
         "────┈┄┄╌╌╌╌┄┄┈────\n"
@@ -543,8 +496,7 @@ async def members(client, message):
         "────┈┄┄╌╌╌╌┄┄┈────\n"
         "✨ #CricketArena | @NexoraSystems"
     )
-
-    # 7️⃣ Thumbnail Logic (HOST UNLIMITED)
+    
     send_thumb = False
     cap_a = cap_b = None
 
@@ -565,12 +517,10 @@ async def members(client, message):
                 send_thumb = True
                 match["members_thumb_sent"] = True
 
-    # 🔄 Refresh Button (ANYONE CAN USE)
     refresh_markup = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔄 Refresh", callback_data="refresh_members")]
     ])
 
-    # 8️⃣ Send Output
     try:
         if send_thumb:
             path_a = await get_fast_avatar(client, cap_a)
@@ -606,7 +556,6 @@ async def members(client, message):
     except Exception as e:
         print(f"[MEMBERS ERROR]: {e}")
         await message.reply_text(text)
-
 
 @Client.on_callback_query(filters.regex("^refresh_members$"))
 async def refresh_members_callback(client, cq):
@@ -700,7 +649,6 @@ from pyrogram import Client, filters
 async def test_members_thumbnail(client, message):
     chat = message.chat
 
-    # 1. Fetch recent group members (limited for speed)
     try:
         members = []
         async for m in client.get_chat_members(chat.id, limit=50):
@@ -710,21 +658,18 @@ async def test_members_thumbnail(client, message):
         if len(members) < 2:
             return await message.reply_text("❌ Need at least 2 users to test thumbnail.")
 
-        # 2. Pick 2 random users
         cap_a, cap_b = random.sample(members, 2)
 
     except Exception as e:
         print(e)
         return await message.reply_text("❌ Failed to fetch members.")
 
-    # 3. Get avatars (cached)
     path_a = await get_fast_avatar(client, cap_a.id)
     path_b = await get_fast_avatar(client, cap_b.id)
 
     if not path_a or not path_b:
         return await message.reply_text("❌ Could not fetch avatars.")
 
-    # 4. Generate thumbnail
     thumb = generate_members_thumbnail(
         cap_a_name=cap_a.first_name or "Captain A",
         cap_b_name=cap_b.first_name or "Captain B",
@@ -733,7 +678,6 @@ async def test_members_thumbnail(client, message):
         group_name=chat.title or "Cricket Arena"
     )
 
-    # 5. Send result
     await message.reply_photo(
         photo=thumb,
         caption=(
@@ -745,14 +689,12 @@ async def test_members_thumbnail(client, message):
         parse_mode=ParseMode.MARKDOWN
     )
 
-
 @Client.on_message(filters.command("add") & filters.group)
 @host_only
 async def add_player(client, message):
     chat_id = message.chat.id
     args = message.text.split(maxsplit=2)
 
-    # 1️⃣ Check for active match in DB and Memory
     game = await get_active_game(chat_id)
     match = ACTIVE_MATCHES.get(chat_id)
 
@@ -761,7 +703,6 @@ async def add_player(client, message):
             "😴 No match running here.\nStart one first and then we’ll add players 🔥"
         )
 
-    # 2️⃣ Validation & Team Assignment
     if len(args) < 2 or args[1].upper() not in ("A", "B"):
         return await message.reply_text(
             "🤔 That didn’t look right.\n\n"
@@ -775,7 +716,6 @@ async def add_player(client, message):
     game_id = game["game_id"]
     targets = []
 
-    # 3️⃣ Collect targets
     if message.reply_to_message:
         targets.append(message.reply_to_message.from_user)
 
@@ -803,7 +743,6 @@ async def add_player(client, message):
                     failed_details.append(f"• <code>{target}</code> — invalid user")
                     continue
 
-                # 🚦 Already playing somewhere else?
                 other = await user_in_other_game(target.id, chat_id)
                 if other:
                     failed_details.append(
@@ -811,7 +750,6 @@ async def add_player(client, message):
                     )
                     continue
 
-                # 🚫 Already in this match?
                 exists = await conn.fetchval(
                     "SELECT 1 FROM game_players WHERE game_id=$1 AND user_id=$2",
                     game_id, target.id
@@ -822,16 +760,13 @@ async def add_player(client, message):
                     )
                     continue
 
-                # ✅ FK FIX: ensure user exists (NO /start needed)
                 await ensure_user_exists(conn, target)
 
-                # 🧠 Insert DB
                 await conn.execute(
                     "INSERT INTO game_players (game_id, user_id, team) VALUES ($1, $2, $3)",
                     game_id, target.id, team
                 )
 
-                # 🔄 Sync Memory
                 if target.id not in match["teams"][team]["players"]:
                     match["teams"][team]["players"].append(target.id)
 
@@ -857,10 +792,7 @@ async def add_player(client, message):
                 failed_details.append(
                     f"• {target.first_name if hasattr(target, 'first_name') else target} — failed"
                 )
-
-    # ── RESPONSE ──
-
-    # ✅ Single add → clean & friendly
+                
     if len(success_list) == 1 and len(targets) == 1:
         return await message.reply_text(
             f"✅ {success_list[0]} added to <b>Team {team}</b>.\n"
@@ -868,7 +800,6 @@ async def add_player(client, message):
             parse_mode=ParseMode.HTML
         )
 
-    # 🎨 CLEAN MULTI-ADD SUMMARY (AESTHETIC)
     team_icon = "🌊" if team == "A" else "🔥"
 
     res = (
@@ -925,7 +856,6 @@ async def remove_player(client, message):
     game_id = game["game_id"]
     match = ACTIVE_MATCHES.get(chat_id)
 
-    # 🛑 SAFETY CHECK: Player currently on field
     if match:
         active_on_field = [
             match.get("striker"),
@@ -953,13 +883,11 @@ async def remove_player(client, message):
                 parse_mode=ParseMode.HTML
             )
 
-        # 1️⃣ Remove from Database
         await conn.execute(
             "DELETE FROM game_players WHERE game_id=$1 AND user_id=$2",
             game_id, target.id
         )
 
-    # 2️⃣ Sync Live Memory
     if match:
         for team_key in ["A", "B"]:
             if target.id in match["teams"][team_key]["players"]:
@@ -973,7 +901,6 @@ async def remove_player(client, message):
         "Roster updated. Drama reduced 😌",
         parse_mode=ParseMode.HTML
     )
-
 
 @Client.on_message(filters.command("shiftteam") & filters.group)
 async def shift_team(client, message):
@@ -989,10 +916,8 @@ async def shift_team(client, message):
             parse_mode=ParseMode.HTML
         )
 
-    # Use memory phase first, fallback to DB
     phase = match.get("phase") if match else game["phase"]
 
-    # 🚫 Block shifting once match progresses
     if phase in ("LIVE", "READY", "STARTED", "INNINGS_1", "INNINGS_2"):
         return await message.reply_text(
             "🔒 Teams are locked now.\n"
@@ -1002,7 +927,6 @@ async def shift_team(client, message):
 
     game_id = game["game_id"]
 
-    # 🔢 Shift limit check
     shifts_used = await get_shift_count(game_id, user.id)
     if shifts_used >= 2:
         return await message.reply_text(
@@ -1028,13 +952,11 @@ async def shift_team(client, message):
         current = player["team"]
         new_team = "B" if current == "A" else "A"
 
-        # 1️⃣ Update Database
         await conn.execute(
             "UPDATE game_players SET team=$1 WHERE game_id=$2 AND user_id=$3",
             new_team, game_id, user.id
         )
 
-    # 🚀 2️⃣ Sync with Live Memory
     if match:
         if user.id in match["teams"][current]["players"]:
             match["teams"][current]["players"].remove(user.id)
@@ -1045,7 +967,6 @@ async def shift_team(client, message):
         if user.id in match["players"]:
             match["players"][user.id]["team"] = new_team
 
-    # 3️⃣ Increment shift counter
     await increment_shift(game_id, user.id)
     shifts_used += 1
 
