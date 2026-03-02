@@ -105,40 +105,12 @@ async def handle_timeout(match, role):
     )
 
     if role == "batter":
-        bat_team = match["teams"][team_key]
-        bat_team["wickets"] += 1
-        
-        if user_id in match["players"]:
-            match["players"][user_id]["is_out"] = True
-
         penalty_msg += "☝️ <b>Batter is OUT</b> — beaten by the clock.\n\n"
-
-        bat_players = bat_team.get("players", [])
-        alive_batters = [
-            uid for uid in bat_players
-            if not match["players"].get(uid, {}).get("is_out", False)
-        ]
-
-        if len(alive_batters) <= 1:
-            await client.send_message(
-                chat_id,
-                penalty_msg + "🏁 <b>ALL OUT!</b>\nThe innings comes to an end.",
-                parse_mode=ParseMode.HTML
-            )
-
-            if match.get("innings") == 1:
-                from plugins.game.team.over_engine import end_innings
-                await end_innings(match)
-            else:
-                from plugins.game.team.over_engine import end_match
-                await end_match(match)
-            return
-
-        penalty_msg += (
-            "🧢 <b>Batting Captain</b>, send the next batter:\n"
-            "<code>/batting &lt;number&gt;</code>"
-        )
-        match["striker"] = None
+        
+        await client.send_message(chat_id, penalty_msg, parse_mode=ParseMode.HTML)
+    
+        from plugins.game.team.over_engine import advance_ball
+        await advance_ball(match, "W")
 
     else:
         match["last_over_bowler"] = user_id
@@ -150,17 +122,17 @@ async def handle_timeout(match, role):
             "<code>/bowling &lt;number&gt;</code>"
         )
         
-    match.update({
-        "prompt_dispatched": False,
-        "bowled": False,
-        "batted": False,
-        "last_bowl": None
-    })
+        match.update({
+            "prompt_dispatched": False,
+            "bowled": False,
+            "batted": False,
+            "last_bowl": None
+        })
 
-    await client.send_message(chat_id, penalty_msg, parse_mode=ParseMode.HTML)
+        await client.send_message(chat_id, penalty_msg, parse_mode=ParseMode.HTML)
 
     for r in ("bowler", "batter"):
-        task = match["timeouts"][r].get("task")
+        task = match["timeouts"].get(r, {}).get("task")
         if task:
             try:
                 task.cancel()
