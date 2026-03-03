@@ -38,14 +38,13 @@ async def team_mode_selected(client, query):
         reply_markup=buttons
     )
 
-
-
 @Client.on_callback_query(filters.regex("^host_select$"))
 async def confirm_host(client, query):
     user = query.from_user
     chat_id = query.message.chat.id
     group_title = query.message.chat.title or "Private Match"
 
+    # Check if game already active
     existing = await get_active_game(chat_id)
     if existing:
         return await query.answer(
@@ -53,6 +52,7 @@ async def confirm_host(client, query):
             show_alert=True
         )
 
+    # Check if user already in another game
     other_game = await user_in_other_game(user.id, chat_id)
     if other_game:
         return await query.answer(
@@ -60,21 +60,30 @@ async def confirm_host(client, query):
             show_alert=True
         )
 
-    match = await create_game(
+    # Create game (returns game_id / UUID)
+    game_id = await create_game(
         chat_id=chat_id,
         mode="team",
         host_id=user.id,
         title=group_title
     )
 
-    # MATCH START LOG
+    # Build match object for logger
+    match = {
+        "game_id": str(game_id),
+        "chat_id": chat_id,
+        "host_name": user.mention
+    }
+
+    # Send match start log
     await send_match_log(
         client,
         "🟢 MATCH STARTED",
         match,
-        "started in the group."
+        "Match started in the group."
     )
 
+    # Update message
     await query.message.edit_caption(
         caption=(
             "👑 <b>HOST CONFIRMED</b>\n\n"
@@ -84,6 +93,7 @@ async def confirm_host(client, query):
         ),
         parse_mode=ParseMode.HTML
     )
+
 @Client.on_callback_query(filters.regex("^mode_cancel$"))
 async def cancel_game(client, query):
     await query.answer()
