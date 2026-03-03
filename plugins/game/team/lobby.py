@@ -39,7 +39,6 @@ AVATAR_CACHE = {}
 CACHE_TTL = 600
 
 async def ensure_user_exists(conn, user):
-    # SQL query single line mein kar di hai
     await conn.execute("INSERT INTO users (user_id, name) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING", user.id, user.first_name or "Player")
 
 def generate_members_thumbnail(cap_a_name: str, cap_b_name: str, cap_a_avatar_path: str, cap_b_avatar_path: str, group_name: str):
