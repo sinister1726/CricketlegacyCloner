@@ -314,12 +314,28 @@ async def advance_ball(match, result):
             match["_rotate_next_ball"] = (runs % 2 != 0)
             match["_last_ball_runs"] = runs
             
-            if match.get("innings") == 2 and match.get("target") and bat_team["runs"] >= match["target"]:
-                match.update({"phase": "finished", "striker": None, "non_striker": None})
-                from plugins.game.team.over_engine import update_game_in_db, end_match
-                await update_game_in_db(match)
-                await end_match(match)
-                return
+            if match.get("innings") == 2 and match.get("target"):
+                bowling_team = match.get("bowling_team")
+                
+                bat_runs = match["teams"][bat_team_key]["runs"]
+                target_runs = match["teams"][bowling_team]["runs"]
+                
+                if bat_runs > target_runs:
+                    if has_client:
+                        await client.send_message(
+                            chat_id,
+                            f"🏆 **𝗧𝗔𝗥𝗚𝗘𝗧 𝗖𝗛𝗔𝗦𝗘𝗗!**\n"
+                            f"──┈┄┄╌╌╌╌┄┄┈──\n"
+                            f"Team {bat_team_key} has successfully chased the target!\n"
+                            f"They win the match! 🎉",
+                            parse_mode=ParseMode.HTML
+                        )
+                    
+                    match.update({"phase": "finished", "striker": None, "non_striker": None})
+                    from plugins.game.team.over_engine import update_game_in_db, end_match
+                    await update_game_in_db(match)
+                    await end_match(match)
+                    return 
                 
         elif result == "W":
             match.pop("_rotate_next_ball", None)
