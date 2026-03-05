@@ -66,6 +66,7 @@ def get_display_ball_no(match):
     balls_bowled = len(match.get("current_over_balls", []))
     return min(balls_bowled + 1, 6)
 
+
 async def start_first_ball(client, match):
     is_new_over = len(match.get("current_over_balls", [])) == 0
     if match.get("prompt_dispatched") and not is_new_over:
@@ -126,10 +127,14 @@ async def start_first_ball(client, match):
         }
 
     user_cache = match.get("user_cache", {})
-    bowler_name = user_cache.get(bowler_id, "Bowler")
-    striker_name = user_cache.get(striker_id, "Batter")
     
-    group_btn = InlineKeyboardMarkup([[
+    raw_bowler_name = user_cache.get(bowler_id, "Bowler")
+    raw_striker_name = user_cache.get(striker_id, "Batter")
+    
+    bowler_name = html.escape(raw_bowler_name)
+    striker_name = html.escape(raw_striker_name)
+
+    group_btn = InlineKeyboardMarkup([[ 
         InlineKeyboardButton("ᴅᴇʟɪᴠᴇʀ ʙᴀʟʟ ⚾", url=f"https://t.me/{bot_username}")
     ]])
 
@@ -145,6 +150,11 @@ async def start_first_ball(client, match):
         await try_send_video(client, chat_id, "Bowling", caption, group_btn)
     except Exception as e:
         print(f"Group Notify Error: {e}")
+
+        try:
+            await client.send_message(chat_id, caption, reply_markup=group_btn, parse_mode=ParseMode.HTML)
+        except:
+            pass
 
     ball_no = get_display_ball_no(match)
 
@@ -163,10 +173,10 @@ async def start_first_ball(client, match):
         )
     except Exception as e:
         match["prompt_dispatched"] = False
-        await client.send_message(
-            chat_id,
-            f"⚠️ <b>Error:</b> Could not DM {bowler_name}. Please start the bot in PM!"
-        )
+        try:
+            await client.send_message(chat_id, f"⚠️ <b>Error:</b> Could not DM {bowler_name}. Please start the bot in PM!", parse_mode=ParseMode.HTML)
+        except:
+            pass
         print(f"⚠️ DM Fail: {e}")
         return
 
@@ -177,6 +187,7 @@ async def start_first_ball(client, match):
     match["timeouts"]["bowler"]["task"] = asyncio.create_task(
         start_timer(match, "bowler")
     )
+
 
 @Client.on_message(filters.private & filters.regex("^[1-6]$"), group=-1)
 async def bowler_dm_handler(client, message):
@@ -222,7 +233,10 @@ async def bowler_dm_handler(client, message):
     )
 
     striker_id = match.get("striker")
-    striker_name = match.get("user_cache", {}).get(striker_id, "Batter")
+    
+    # Escaping striker's name to avoid HTML issues
+    raw_striker_name = match.get("user_cache", {}).get(striker_id, "Batter")
+    striker_name = html.escape(raw_striker_name)
 
     ball_no = get_display_ball_no(match)
 
@@ -246,7 +260,7 @@ async def bowler_dm_handler(client, message):
     match["timeouts"]["batter"]["task"] = asyncio.create_task(
         start_timer(match, "batter")
     )
-
+    
 @Client.on_message(filters.group & filters.regex("^[0-6]$"), group=-1)
 async def batter_handler(client, message):
     uid = message.from_user.id
