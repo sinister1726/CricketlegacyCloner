@@ -1,6 +1,6 @@
 from database.connection import db
 
-async def restrict_user(user_id: int, reason: str, admin_id: int)
+async def restrict_user(user_id: int, reason: str, admin_id: int):
     async with db.pool.acquire() as conn:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS restricted_users (
