@@ -20,8 +20,9 @@ def get_back_to_group_markup(group_chat_id: int):
 
 def get_mention(match, user_id):
     name = match.get("user_cache", {}).get(user_id, "Player")
-    return f'<a href="tg://user?id={user_id}">{name}</a>'
-
+    safe_name = html.escape(name) 
+    return f'<a href="tg://user?id={user_id}">{safe_name}</a>'
+    
 async def try_send_video(client, chat_id, key, caption, reply_markup=None):
     video_list = RUN_VIDEOS.get(str(key), [])
     if not video_list:
