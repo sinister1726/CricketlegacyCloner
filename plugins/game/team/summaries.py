@@ -1,9 +1,11 @@
 from utils.mentions import mention_html
 import random
+import html
 
 def format_player_line(name, runs, balls, bowling=None, is_striker=False):
+    safe_name = html.escape(name)
     star = " 🏏" if is_striker else ""
-    line = f"✧ <b>{name}</b>{star} = {runs} ({balls}b)"
+    line = f"✧ <b>{safe_name}</b>{star} = {runs} ({balls}b)"
 
     if bowling and len(bowling) > 0:
         balls_str = " • ".join(map(str, bowling))
@@ -28,7 +30,8 @@ async def build_over_summary(client, match):
     partnership_balls = match.get("partnership_balls", 0)
 
     next_bowler_id = match.get("current_bowler")
-    next_bowler_name = user_cache.get(next_bowler_id, "Captain will decide") if next_bowler_id else "Captain will decide"
+    raw_bowler = user_cache.get(next_bowler_id, "Captain will decide") if next_bowler_id else "Captain will decide"
+    next_bowler_name = html.escape(raw_bowler)
 
     lines = [
         "🏏 <b>𝗟𝗜𝗩𝗘 𝗠𝗔𝗧𝗖𝗛 𝗦𝗖𝗢𝗥𝗘𝗖𝗔𝗥𝗗</b>",
@@ -57,7 +60,8 @@ async def build_over_summary(client, match):
                 p = match.get("players", {}).get(uid, {})
                 if not p: continue 
                 
-                p_name = user_cache.get(uid, "Player")
+                raw_name = user_cache.get(uid, "Player")
+                p_name = html.escape(raw_name)
 
                 status_tag = ""
                 if uid == striker_id:
@@ -77,13 +81,16 @@ async def build_over_summary(client, match):
     recent_list = match.get("current_over_balls", [])
     recent = " • ".join(map(str, recent_list)) if recent_list else "Over completed"
 
-    next_batter = user_cache.get(striker_id, "Captain will decide")
+    raw_next_batter = user_cache.get(striker_id, "Captain will decide")
+    next_batter = html.escape(raw_next_batter)
+    
+    safe_host = html.escape(match.get('host_name', 'Admin'))
 
     lines.extend([
         "× ──────┈┄┄╌╌╌╌┄┄┈────── ×",
         f"🕒 <b>Last Over:</b> [ {recent} ]",
         f"👉 <b>Next on Strike:</b> {next_batter}",
-        f"\n─────⊱ 📯 ᕼOՏT: {match.get('host_name', 'Admin')} ⊰─────"
+        f"\n─────⊱ 📯 ᕼOՏT: {safe_host} ⊰─────"
     ])
 
     return "\n".join(lines)
@@ -150,20 +157,23 @@ async def build_match_summary(client, match, winner):
             best_bat_id = max(team_players, key=lambda x: team_players[x].get("runs", 0), default=None)
             if best_bat_id:
                 bb = team_players[best_bat_id]
-                res.append(f"🔥 <b>ʙᴇsᴛ ʙᴀᴛᴛᴇʀ:</b> {user_cache.get(best_bat_id, 'Player')}")
+                safe_bat = html.escape(user_cache.get(best_bat_id, 'Player'))
+                res.append(f"🔥 <b>ʙᴇsᴛ ʙᴀᴛᴛᴇʀ:</b> {safe_bat}")
                 res.append(f"╰ {bb.get('runs', 0)} runs ({bb.get('balls_faced', 0)}b)")
 
             best_bowl_id = max(team_players, key=lambda x: (team_players[x].get("wickets", 0), -team_players[x].get("runs_conceded", 999)), default=None)
             if best_bowl_id and team_players[best_bowl_id].get("wickets", 0) > 0:
                 bw = team_players[best_bowl_id]
-                res.append(f"💎 <b>ʙᴇsᴛ ʙᴏᴡʟᴇʀ:</b> {user_cache.get(best_bowl_id, 'Player')}")
+                safe_bowl = html.escape(user_cache.get(best_bowl_id, 'Player'))
+                res.append(f"💎 <b>ʙᴇsᴛ ʙᴏᴡʟᴇʀ:</b> {safe_bowl}")
                 res.append(f"╰ {bw.get('wickets', 0)} wkts | {bw.get('runs_conceded', 0)} runs conceded")
                 
             for uid, p in team_players.items():
                 p_score = p.get("runs", 0) + (p.get("wickets", 0) * 25)
                 if p_score > motm_score:
                     motm_score = p_score
-                    motm_name = user_cache.get(uid, "Player")
+                    raw_motm = user_cache.get(uid, "Player")
+                    motm_name = html.escape(raw_motm)
 
     res.append("\n× •-•-•-•-•-••-•-•⟮ 🎖 ⟯•-•-•-•-•-•-•-•-• ×")
     res.append(f"\n🎖 <b>ᴍᴀɴ ᴏғ ᴛʜᴇ ᴍᴀᴛᴄʜ</b>")
