@@ -12,3 +12,4 @@ asyncpg
 matplotlib
 httpx
 requests
+GitPython
