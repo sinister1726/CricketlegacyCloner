@@ -142,7 +142,7 @@ async def start_first_ball(client, match):
 
     bowler_mention = f"<a href='tg://user?id={bowler_id}'>{bowler_name}</a>"
     caption = (
-        f"🏟️ <b>𝗡𝗘𝗫𝗧 𝗗𝗘𝗟𝗜𝗩𝗘𝗥𝗬</b>\n"
+        f"🏟️ 𝗡𝗘𝗫𝗧 𝗗𝗘𝗟𝗜𝗩𝗘𝗥𝗬\n"
         f"──┈┄┄╌╌╌╌┄┄┈──\n"
         f"🎯 {bowler_mention} ɪꜱ ʙᴏᴡʟɪɴɢ ᴛᴏ <b>{striker_name}</b>\n"
         f"🔢 Bowler, check your PM to deliver!"
@@ -164,7 +164,7 @@ async def start_first_ball(client, match):
         await client.send_message(
             bowler_id,
             (
-                "🏏 <b>𝗬𝗢𝗨𝗥 𝗧𝗨𝗥𝗡 𝗧𝗢 𝗕𝗢𝗪𝗟!</b>\n"
+                "🏏𝗬𝗢𝗨𝗥 𝗧𝗨𝗥𝗡 𝗧𝗢 𝗕𝗢𝗪𝗟!\n"
                 "──┈┄┄╌╌╌╌┄┄┈──\n"
                 f"👤 <b>Batter:</b> {striker_name}\n"
                 "🔢 Send a number (<b>1-6</b>) to bowl.\n"
