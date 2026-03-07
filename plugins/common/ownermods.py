@@ -2,6 +2,8 @@ import time
 import asyncio
 import pyrogram.errors
 from datetime import datetime, timedelta
+from config import Config
+from plugins.game.team import ACTIVE_MATCHES 
 
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
@@ -470,7 +472,7 @@ async def leave_cmd(client, message):
             "Thanks for having me around — it was fun while it lasted.\n\n"
             "If you feel this wasn’t meant to happen or something felt off,\n"
             "no worries at all 🤍 just reach out to the admins here:\n\n"
-            "🎮 𝗣𝗹𝗮𝘆 𝗭𝗼𝗻𝗲 → https://t.me/CLG_fun_zone\n" # ───🔥 FIX 3: Added newline here 🔥───
+            "🎮 𝗣𝗹𝗮𝘆 𝗭𝗼𝗻𝗲 → https://t.me/CLG_fun_zone\n"
             "Take care & keep the vibes alive 🏏✨",
             parse_mode=ParseMode.HTML
         )
@@ -489,4 +491,64 @@ async def leave_cmd(client, message):
         )
     except Exception:
         pass
-        
+
+@Client.on_message(filters.command("active"))
+async def active_matches_cmd(client, message):
+    if message.from_user.id != OWNER_ID:
+        return
+
+    if not ACTIVE_MATCHES:
+        return await message.reply_text("😴 There are no active games in any group right now.")
+
+    msg = await message.reply_text("🔄 **Scanning Live Matches...** 📡")
+    
+    text = "🏏 **𝗚𝗟𝗢𝗕𝗔𝗟 𝗟𝗜𝗩𝗘 𝗠𝗔𝗧𝗖𝗛𝗘𝗦**\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    count = 1
+
+    for chat_id, match in list(ACTIVE_MATCHES.items()):
+        try:
+            chat = await client.get_chat(chat_id)
+            chat_name = chat.title or "Unknown Group"
+            
+            if chat.username:
+                chat_link = f"<a href='https://t.me/{chat.username}'>{chat_name}</a> [🌍 Public]"
+            else:
+                chat_link = f"<b>{chat_name}</b> [🔒 Private]"
+                
+            phase = match.get("phase", "UNKNOWN")
+            
+            mode = str(match.get("mode", "Team")).title()
+            
+            score_str = "Setup in progress..."
+            if "teams" in match:
+                tA = match["teams"].get("A", {})
+                tB = match["teams"].get("B", {})
+                
+                rA, wA, bA = tA.get("runs", 0), tA.get("wickets", 0), tA.get("balls", 0)
+                rB, wB, bB = tB.get("runs", 0), tB.get("wickets", 0), tB.get("balls", 0)
+                
+                score_str = f"🌊 A: {rA}/{wA} ({bA//6}.{bA%6} ov) | 🔥 B: {rB}/{wB} ({bB//6}.{bB%6} ov)"
+                
+            host_name = match.get("host_name", "Unknown Host")
+            
+            # Text formatting
+            text += f"**{count}. {chat_link}**\n"
+            text += f"🎮 <b>Mode:</b> {mode} | 📍 <b>Phase:</b> {phase}\n"
+            text += f"📊 <b>Score:</b> `{score_str}`\n"
+            text += f"👑 <b>Host:</b> {host_name}\n\n"
+            
+            count += 1
+            await asyncio.sleep(0.1)
+            
+        except Exception as e:
+            print(f"Error fetching info for chat {chat_id}: {e}")
+            continue
+
+    if count == 1:
+        return await msg.edit_text("⚠️ Matches exist in memory, but couldn't fetch group details from Telegram (bot might have been kicked).")
+
+    if len(text) > 4000:
+        text = text[:4000] + "...\n\n<i>⚠️ List is too long! Showing top matches only.</i>"
+
+    await msg.edit_text(text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+                
