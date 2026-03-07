@@ -8,6 +8,7 @@ from config import Config
 
 OWNER = filters.user(list(Config.OWNER_IDS))
 
+
 @Client.on_message(filters.command(["gitpull", "update"]) & OWNER)
 async def update_bot(client, message):
 
@@ -16,35 +17,36 @@ async def update_bot(client, message):
         parse_mode=ParseMode.HTML
     )
 
+    # Check git installation
     if not shutil.which("git"):
         return await msg.edit(
-            "❌ <b>CRITICAL ERROR:</b> <code>git</code> is not installed on your VPS/Server.\n"
-            "Please install git first using <code>apt install git</code>.",
+            "❌ <b>CRITICAL ERROR:</b> <code>git</code> not installed.\nInstall using <code>apt install git</code>",
             parse_mode=ParseMode.HTML
         )
 
+    # Initialize repo if missing
     if not os.path.exists(".git"):
         await msg.edit("📦 <b>Initializing git repository...</b>", parse_mode=ParseMode.HTML)
+
         os.system("git init")
         os.system(f"git remote add origin {Config.UPSTREAM_REPO}")
         os.system("git fetch origin")
         os.system("git reset --hard origin/main")
 
+    # Load repo
     try:
-        repo = Repo()
+        repo = Repo(".")
     except exc.InvalidGitRepositoryError:
         return await msg.edit(
-            "❌ <b>Git Setup Failed!</b>\n"
-            "The repository could not be initialized properly. Please clone the bot directly using git.",
+            "❌ <b>Git Setup Failed!</b>\nClone the bot properly using git.",
             parse_mode=ParseMode.HTML
         )
-    except Exception as e:
-        return await msg.edit(f"❌ <b>Error:</b> {e}", parse_mode=ParseMode.HTML)
 
-    try:
+    # Ensure upstream exists
+    remotes = [r.name for r in repo.remotes]
+
+    if "upstream" not in remotes:
         repo.create_remote("upstream", Config.UPSTREAM_REPO)
-    except:
-        pass
 
     await msg.edit(
         "🔎 <b>Checking for updates...</b>",
@@ -53,9 +55,14 @@ async def update_bot(client, message):
 
     try:
         repo.remotes.upstream.fetch()
+
         commits = list(repo.iter_commits("HEAD..upstream/main"))
+
     except Exception as e:
-        return await msg.edit(f"❌ <b>Fetch Error:</b> Check if UPSTREAM_REPO is correct.\n{e}", parse_mode=ParseMode.HTML)
+        return await msg.edit(
+            f"❌ <b>Fetch Error</b>\n<code>{e}</code>",
+            parse_mode=ParseMode.HTML
+        )
 
     if not commits:
         return await msg.edit(
@@ -91,5 +98,5 @@ async def update_bot(client, message):
     )
 
     os.system("pip3 install -r requirements.txt")
-    os.system(f"kill -9 {os.getpid()}")
-    
+
+    os.execl(sys.executable, sys.executable, *sys.argv)
