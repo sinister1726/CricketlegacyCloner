@@ -54,7 +54,6 @@ async def start_timer(match, role):
 
     await handle_timeout(match, role)
 
-
 async def handle_timeout(match, role):
     client = match["client"]
     chat_id = match["chat_id"]
@@ -93,6 +92,10 @@ async def handle_timeout(match, role):
 
     if team_key in match.get("teams", {}):
         match["teams"][team_key]["runs"] -= 6
+        
+        if match.get("innings") == 2 and role == "bowler":
+            if "target" in match:
+                match["target"] -= 6
 
     try:
         await update_team_penalty(match["game_id"], team_key, 6)
@@ -140,3 +143,4 @@ async def handle_timeout(match, role):
                 task.cancel()
             except Exception:
                 pass
+                
