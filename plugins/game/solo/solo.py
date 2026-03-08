@@ -27,8 +27,6 @@ async def auto_start_timer(client, chat_id):
     match["current_bowler"] = match["batting_order"][1] if match["batting_order"][1] != match["striker"] else match["batting_order"][2]
     match["current_batter_idx"] = 0
     match["bowler_balls"] = 0
-    
-    match["idle_task"] = asyncio.create_task(idle_timeout_checker(client, chat_id))
 
     await client.send_message(chat_id, "🚀 <b>𝗦𝗢𝗟𝗢 𝗠𝗔𝗧𝗖𝗛 𝗦𝗧𝗔𝗥𝗧𝗘𝗗!</b>\n\nGet ready for the ultimate showdown!", parse_mode=ParseMode.HTML)
 
@@ -91,7 +89,6 @@ async def init_solo_mode(client, query):
         "bowler_balls": 0,
         "bowler_input": None,
         "timer_task": None,
-        "idle_task": None,
         "last_activity": time.time(),
         "lobby_msg": None 
     }
@@ -108,7 +105,7 @@ async def init_solo_mode(client, query):
         msg = await query.message.edit_media(
             media=InputMediaPhoto(
                 media=SOLO_MODE_IMAGE, 
-                caption="👤 <b>𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘 — 𝗥𝗘𝗚𝗜𝗦𝗧𝗥𝗔𝗧𝗜𝗢𝗡</b>\n\n🔥 <b>Rules:</b>\n• Play via DM and Group.\n• Type <code>/join</code> to enter.\n• Type <code>/leave</code> to exit.\n• 60s automatic start!\n\n👥 <b>Joined:</b> 1\n⏳ <b>Starting in 60 seconds...</b>"
+                caption="👤 <b>𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘 — 𝗥𝗘𝗚𝗜𝗦𝗧𝗥𝗔𝗧𝗜𝗢𝗡</b>\n\n🔥 <b>Rules:</b>\n• Play via DM and Group.\n• Type <code>/join</code> to enter.\n• Type <code>/leave</code> to exit.\n• 120s automatic start!\n\n👥 <b>Joined:</b> 1\n⏳ <b>Starting in 120 seconds...</b>"
             )
         )
         ACTIVE_MATCHES[chat_id]["lobby_msg"] = msg
@@ -158,7 +155,7 @@ async def update_lobby(match, total_players):
     if not match.get("lobby_msg"): return
     try:
         await match["lobby_msg"].edit_caption(
-            caption=f"👤 <b>𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘 — 𝗥𝗘𝗚𝗜𝗦𝗧𝗥𝗔𝗧𝗜𝗢𝗡</b>\n\n🔥 <b>Rules:</b>\n• Play via DM and Group.\n• Type <code>/join</code> to enter.\n• Type <code>/leave</code> to exit.\n• 60s automatic start!\n\n👥 <b>Joined:</b> {total_players}\n⏳ <b>Starting automatically...</b>",
+            caption=f"👤 <b>𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘 — 𝗥𝗘𝗚𝗜𝗦𝗧𝗥𝗔𝗧𝗜𝗢𝗡</b>\n\n🔥 <b>Rules:</b>\n• Play via DM and Group.\n• Type <code>/join</code> to enter.\n• Type <code>/leave</code> to exit.\n• 120s automatic start!\n\n👥 <b>Joined:</b> {total_players}\n⏳ <b>Starting automatically...</b>",
             parse_mode=ParseMode.HTML
         )
     except MessageNotModified: pass
@@ -217,7 +214,6 @@ async def rotate_solo_players(client, chat_id, match, is_wicket=False):
         match["players"][match["striker"]]["is_out"] = True
         match["current_batter_idx"] += 1
         
-        # Auto-End when all players have batted
         if match["current_batter_idx"] >= len(players):
             return await end_solo_match(match)
             
@@ -401,7 +397,6 @@ async def end_solo_match(match):
     players = match["players"]
 
     if match.get("timer_task"): match["timer_task"].cancel()
-    if match.get("idle_task"): match["idle_task"].cancel()
 
     if not players:
         ACTIVE_MATCHES.pop(chat_id, None)
