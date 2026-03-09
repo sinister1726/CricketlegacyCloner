@@ -895,3 +895,135 @@ async def leave_bench(client, callback_query):
     )
 
     await callback_query.answer("You left the bench.")
+
+@Client.on_message(filters.command(["substitute", "sub"]) & filters.group)
+@host_only
+async def substitute_player(client, message):
+
+    chat_id = message.chat.id
+    match = ACTIVE_MATCHES.get(chat_id)
+
+    if not match:
+        return await message.reply_text(
+            "😴 Nothing happening here right now.\nStart a match first."
+        )
+
+    if not (match.get("striker") and match.get("current_bowler")):
+        return await message.reply_text(
+            "⏳ Hold up!\nSubstitutions unlock once the match starts."
+        )
+
+    args = message.command[1:]
+
+    old_player = None
+    new_player = None
+
+    if message.reply_to_message and args:
+        old_player = message.reply_to_message.from_user
+        new_player = args[0]
+
+    elif len(args) == 2:
+        old_player = args[0]
+        new_player = args[1]
+
+    else:
+        return await message.reply_text(
+            "Usage:\n/sub @player_out @player_in\nor reply to player with /sub @newplayer"
+        )
+
+    try:
+        if isinstance(old_player, str):
+            old_player = await client.get_users(old_player)
+
+        if isinstance(new_player, str):
+            new_player = await client.get_users(new_player)
+    except:
+        return await message.reply_text(
+            "😅 Couldn't find one of those players."
+        )
+
+    players = match["players"]
+
+    if old_player.id in players and new_player.id not in players:
+        remove_id = old_player.id
+        add_user = new_player
+
+    elif new_player.id in players and old_player.id not in players:
+        remove_id = new_player.id
+        add_user = old_player
+
+    else:
+        return await message.reply_text(
+            "🤔 I couldn't figure out who to replace.\nMake sure one player is in the team."
+        )
+
+    buttons = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "Ready",
+                    callback_data=f"sub_ready_{chat_id}_{remove_id}_{add_user.id}"
+                ),
+                InlineKeyboardButton(
+                    "Cancel",
+                    callback_data=f"sub_cancel_{chat_id}_{add_user.id}"
+                )
+            ]
+        ]
+    )
+
+    await message.reply_text(
+        f"👀{add_user.mention}, you are invited to join the team.\nHost wants to substitute you in.\nPress Ready if you're ready to play.",
+        reply_markup=buttons
+    )
+
+@Client.on_callback_query(filters.regex("^sub_ready_"))
+async def sub_ready(client, query):
+
+    data = query.data.split("_")
+
+    chat_id = int(data[2])
+    remove_id = int(data[3])
+    add_id = int(data[4])
+
+    match = ACTIVE_MATCHES.get(chat_id)
+
+    if not match:
+        return await query.answer("Match not found.", show_alert=True)
+
+    if query.from_user.id != add_id:
+        return await query.answer("This button isn't for you.", show_alert=True)
+
+    players = match["players"]
+
+    if remove_id not in players:
+        return await query.answer("Player already replaced.", show_alert=True)
+
+    players.remove(remove_id)
+    players.append(add_id)
+
+    match["user_cache"][add_id] = query.from_user.first_name
+
+    try:
+        from plugins.game.bench import REPLACEMENT_QUEUE
+        queue = REPLACEMENT_QUEUE.get(chat_id, [])
+
+        if add_id in queue:
+            queue.remove(add_id)
+    except:
+        pass
+
+    await query.message.edit_text(
+        f"🔁 Substitution complete.\n{query.from_user.mention} has joined the match."
+    )
+
+@Client.on_callback_query(filters.regex("^sub_cancel_"))
+async def sub_cancel(client, query):
+
+    data = query.data.split("_")
+    add_id = int(data[3])
+
+    if query.from_user.id != add_id:
+        return await query.answer("This button isn't for you.", show_alert=True)
+
+    await query.message.edit_text("Substitution declined.")
