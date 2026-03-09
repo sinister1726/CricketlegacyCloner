@@ -760,7 +760,6 @@ async def replacement_queue(client, message):
 
     host_id = match.get("host_id")
 
-    # ensure queue exists
     if chat_id not in REPLACEMENT_QUEUE:
         REPLACEMENT_QUEUE[chat_id] = []
 
@@ -810,13 +809,27 @@ async def replacement_queue(client, message):
             "😄 Easy there champ.\nYou're already inside the match — no need to sit on the bench."
         )
 
-    # ALREADY IN QUEUE
+    # ALREADY IN QUEUE → SHOW LEAVE BUTTON
     if user.id in queue:
         pos = queue.index(user.id) + 1
+
+        buttons = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🚪 Leave Bench",
+                        callback_data=f"leavebench_{chat_id}_{user.id}"
+                    )
+                ]
+            ]
+        )
+
         return await message.reply_text(
-            f"🪑 You're already on standby.\n"
-            f"Position in queue: <b>#{pos}</b>",
-            parse_mode=ParseMode.HTML
+            f"🪑 <b>You're already on the standby bench</b>\n"
+            f"➥ Position: <b>#{pos}</b>\n"
+            f"Press the button below if you want to leave.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=buttons
         )
 
     # REGISTER USER
@@ -833,3 +846,52 @@ async def replacement_queue(client, message):
         f"⏳ Sit tight — the host will bring you in if a spot opens.",
         parse_mode=ParseMode.HTML
     )
+
+
+# LEAVE BENCH BUTTON
+@Client.on_callback_query(filters.regex("^leavebench_"))
+async def leave_bench(client, callback_query):
+
+    data = callback_query.data.split("_")
+    chat_id = int(data[1])
+    user_id = int(data[2])
+
+    user = callback_query.from_user
+    match = ACTIVE_MATCHES.get(chat_id)
+
+    # only the player can press
+    if user.id != user_id:
+        return await callback_query.answer(
+            "❌ This button isn't for you.",
+            show_alert=True
+        )
+
+    if not match:
+        return await callback_query.answer(
+            "Match not found.",
+            show_alert=True
+        )
+
+    # match must be started
+    if not (match.get("striker") and match.get("current_bowler")):
+        return await callback_query.answer(
+            "Match hasn't started yet.",
+            show_alert=True
+        )
+
+    queue = REPLACEMENT_QUEUE.get(chat_id, [])
+
+    if user_id not in queue:
+        return await callback_query.answer(
+            "You're not on the bench.",
+            show_alert=True
+        )
+
+    queue.remove(user_id)
+
+    await callback_query.message.edit_text(
+        f"🚪 <b>{user.first_name}</b> has left the standby bench.",
+        parse_mode=ParseMode.HTML
+    )
+
+    await callback_query.answer("You left the bench.")
