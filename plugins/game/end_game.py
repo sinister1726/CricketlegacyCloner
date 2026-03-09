@@ -10,7 +10,7 @@ from database.games import is_game_active, end_game as close_db_game
 from plugins.game.team import ACTIVE_MATCHES
 from plugins.game.team.over_engine import end_match
 from plugins.utilities.logger import send_match_log
-from plugins.game.team.bench import REPLACEMENT_QUEUE
+from plugins.game.team.lobby import REPLACEMENT_QUEUE
 
 class MatchEncoder(json.JSONEncoder):
     def default(self, obj):
