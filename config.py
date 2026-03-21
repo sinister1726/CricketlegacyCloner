@@ -3,7 +3,7 @@ import os
 class Config:
     API_ID = 25887786
     API_HASH = "e4201277f5f2883f22c150167bd24479"
-    BOT_TOKEN = "8769408417:AAE6hiIgQZqhTVfAIy-h2GeK4O3K8yl-EgU"
+    BOT_TOKEN = "8264820868:AAGfpaMQ0uiO_N0rfCskR6Jfq0uTqhoe-Kk"
 
     DATABASE_URL = (
         "postgresql://neondb_owner:npg_E9BGHRvVljt3@ep-still-wind-a1ko7gew.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
