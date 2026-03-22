@@ -24,9 +24,9 @@ async def score_cmd(client, message: Message):
 
     if match.get("mode") == "Solo":
         SCORE_COOLDOWN[chat_id] = current_time
-        from plugins.game.solo import build_solo_score_text
+        from plugins.game.solo import build_solo_score_text, PLAYZONE_BTN
         text = build_solo_score_text(match)
-        return await message.reply_text(text, parse_mode=ParseMode.HTML)
+        return await message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=PLAYZONE_BTN)
 
     if not match.get("client"):
         match["client"] = client

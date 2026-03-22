@@ -4,6 +4,7 @@ import time
 import html
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
+from pyrogram.errors import FloodWait
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from Assets.files import RUN_VIDEOS
@@ -11,12 +12,47 @@ from plugins.game.team import ACTIVE_MATCHES
 
 
 COMMS = {
-    1: ["Quick single!", "Sharp running!", "Keeps the scoreboard ticking.", "One run, survival mode 😌", "Strike rotated."],
-    2: ["Placed perfectly.", "Easy two.", "Threaded the gap 🪡", "Smooth as butter 🧈", "Good placement."],
-    3: ["Risky but rewarding!", "Great hustle!", "All legs, no brakes 😤", "Three! Brave running.", "Commitment rewarded."],
-    4: ["CRACKED! 💥", "That raced away!", "FOUR! 🔥", "Pure timing. Chef's kiss 👨‍🍳", "To the rope!", "Boundary! No chance."],
-    5: ["Overthrows! Chaos! 😂", "Five runs — fielding.exe crashed 💀", "Bonus runs! Lucky break!", "Chaos in the field!"],
-    6: ["🚀 INTO ORBIT!", "MAXIMUM! 💥", "HUGE SIX! Gone for miles.", "That ball needs a passport! 🛰️", "BEAST MODE! 🔥"],
+    1: [
+        "Quick single!", "Sharp running!", "Keeps the scoreboard ticking.",
+        "One run, survival mode 😌", "Strike rotated.", "Smart cricket.",
+        "Pushed into the gap, one run.", "Easy single, keeps the bat ticking.",
+        "Cheeky little nudge for one.", "Turned off the pads, quick single!",
+    ],
+    2: [
+        "Placed perfectly.", "Easy two.", "Threaded the gap 🪡",
+        "Smooth as butter 🧈", "Good placement.", "Running hard between the wickets!",
+        "Punched to the covers, two runs.", "Driven with authority, two more.",
+        "Slapped to the deep, they come back for two.", "Excellent calling, two runs!",
+    ],
+    3: [
+        "Risky but rewarding!", "Great hustle!", "All legs, no brakes 😤",
+        "Three! Brave running.", "Commitment rewarded.", "Pushed to the deep, three!",
+        "They ran three! Brilliant running between the wickets!",
+        "Dived in and made it — three runs!", "Three off a mistimed shot, lucky!",
+        "Fields scrambling, they grabbed three!",
+    ],
+    4: [
+        "CRACKED! 💥", "That raced away!", "FOUR! 🔥",
+        "Pure timing. Chef's kiss 👨‍🍳", "To the rope!", "Boundary! No chance.",
+        "Elegant drive, right to the fence 🎯", "SLAPPED through the covers — FOUR!",
+        "Pulled off the front foot, that's a beauty!", "Edged and it races away — FOUR!",
+        "Upper cut! Flies to the third-man fence!", "That's been creamed through mid-off!",
+        "SMASHED down the ground — straight FOUR!", "Flicked off the pads, four runs!",
+    ],
+    5: [
+        "Overthrows! Chaos! 😂", "Five runs — fielding.exe crashed 💀",
+        "Bonus runs! Lucky break!", "Chaos in the field!",
+        "Fumble in the deep gives them five!", "Misfield! Five on the board!",
+    ],
+    6: [
+        "🚀 INTO ORBIT!", "MAXIMUM! 💥", "HUGE SIX! Gone for miles.",
+        "That ball needs a passport! 🛰️", "BEAST MODE! 🔥",
+        "WHAT A HIT! Straight into the stands!", "MONSTROUS! The crowd goes wild! 🏟️",
+        "That's in another zip code! 🗺️", "Six appeal! Umpire's arm goes up!",
+        "Absolutely DEMOLISHED! 💣", "HEAVED over the rope! Effortless power!",
+        "SIX! Bat met ball and the ball LOST! 😤", "Picked up and launched! MAXIMUM!",
+        "Skyline shot! Nowhere to be found! 🌌",
+    ],
 }
 
 
@@ -29,6 +65,20 @@ def get_back_btn(chat_id):
     clean = str(chat_id).replace("-100", "")
     link = f"https://t.me/c/{clean}/999999999"
     return InlineKeyboardMarkup([[InlineKeyboardButton("Back to Group 🏏", url=link)]])
+
+
+async def safe_send(coro):
+    try:
+        return await coro
+    except FloodWait as e:
+        await asyncio.sleep(e.value)
+        try:
+            return await coro
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return None
 
 
 async def try_send_video(client, chat_id, key, caption, reply_markup=None):
@@ -44,20 +94,31 @@ async def try_send_video(client, chat_id, key, caption, reply_markup=None):
                     reply_markup=reply_markup,
                     parse_mode=ParseMode.HTML,
                 )
+            except FloodWait as e:
+                await asyncio.sleep(e.value)
             except Exception:
-                try:
-                    return await client.send_animation(
-                        chat_id=chat_id,
-                        animation=file_id,
-                        caption=caption,
-                        reply_markup=reply_markup,
-                        parse_mode=ParseMode.HTML,
-                    )
-                except Exception:
-                    pass
-    return await client.send_message(
-        chat_id, caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup
-    )
+                pass
+            try:
+                return await client.send_animation(
+                    chat_id=chat_id,
+                    animation=file_id,
+                    caption=caption,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML,
+                )
+            except FloodWait as e:
+                await asyncio.sleep(e.value)
+            except Exception:
+                pass
+    try:
+        return await client.send_message(
+            chat_id, caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup
+        )
+    except FloodWait as e:
+        await asyncio.sleep(e.value)
+        return await client.send_message(
+            chat_id, caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup
+        )
 
 
 async def send_solo_ball_prompt(client, match):
@@ -98,10 +159,7 @@ async def send_solo_ball_prompt(client, match):
         f"🔢 Bowler, check your PM to deliver! (Ball {spell_ball}/3)"
     )
 
-    try:
-        await try_send_video(client, chat_id, "Bowling", group_caption, group_btn)
-    except Exception as e:
-        print(f"Solo group notify error: {e}")
+    asyncio.create_task(try_send_video(client, chat_id, "Bowling", group_caption, group_btn))
 
     try:
         await client.send_message(
@@ -116,6 +174,17 @@ async def send_solo_ball_prompt(client, match):
             ),
             parse_mode=ParseMode.HTML,
         )
+    except FloodWait as e:
+        await asyncio.sleep(e.value)
+        try:
+            await client.send_message(
+                bowler_id,
+                f"🏏 <b>Your turn to bowl!</b> Ball {spell_ball}/3 — Send 1-6",
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception:
+            match["prompt_dispatched"] = False
+            return
     except Exception as e:
         match["prompt_dispatched"] = False
         try:
@@ -177,13 +246,13 @@ async def solo_bowler_dm(client, message):
     chat_id = match["chat_id"]
     back_btn = get_back_btn(chat_id)
 
-    await message.reply_text("⚾️", quote=True)
+    asyncio.create_task(safe_send(message.reply_text("⚾️", quote=True)))
     asyncio.create_task(
-        message.reply_text(
+        safe_send(message.reply_text(
             f"✅ <b>Ball Delivered: {message.text}</b>\nReturn to the group!",
             reply_markup=back_btn,
             parse_mode=ParseMode.HTML,
-        )
+        ))
     )
 
     batter_id = match["current_batter"]
@@ -238,16 +307,16 @@ async def solo_batter_handler(client, message):
     bat_num = int(message.text)
 
     if bat_num == 0:
-        await message.reply_text(
+        await safe_send(message.reply_text(
             "❌ <b>0 (dot) not allowed in Solo mode!</b> Play a shot (1-6).",
             parse_mode=ParseMode.HTML,
             quote=True,
-        )
+        ))
         return
 
     match["batted"] = True
 
-    await message.reply_text("👍", quote=True)
+    asyncio.create_task(safe_send(message.reply_text("👍", quote=True)))
 
     bowl_num = match.get("last_bowl")
 
