@@ -23,6 +23,9 @@ A Telegram bot for cricket-based group games with a Flask web log dashboard.
 - 1v1 Stats button on profile — separate duel leaderboard
 - Inactivity nudge — DMs players after 3+ days idle
 - Career stats, rank tiers, achievements, best partnership tracking
+- **Solo timeout 2-strike ban system** — 2 consecutive misses → -6 runs penalty, elimination, 20-min ban
+- **Event/Tournament system** — `/start_event`, `/register`, `/deregister`, `/list_events`, `/event_players`, `/end_event`
+- **Broadcast upgrade** — `/broadcast` now offers Forward (with label) or Copy (clean, no label) modes via inline buttons
 
 ## Technologies
 

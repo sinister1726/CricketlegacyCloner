@@ -1,4 +1,5 @@
 import html
+import asyncio
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -7,6 +8,9 @@ from config import Config
 from database.connection import db
 
 OWNER_FILTER = filters.user(list(Config.OWNER_IDS))
+
+# Pending broadcast sessions: {user_id: {"from_chat": ..., "msg_id": ...}}
+_pending_broadcasts: dict = {}
 
 EDITABLE_STATS = {
     "matches", "wins", "losses", "runs", "balls_faced", "highest_score",
@@ -212,31 +216,93 @@ async def broadcast_cmd(client, message):
     if not message.reply_to_message:
         return await message.reply_text(
             "⚠️ <b>Reply to the message you want to broadcast</b> and use <code>/broadcast</code>.\n\n"
-            "The replied message will be forwarded to all groups the bot is in.",
+            "<b>Modes:</b>\n"
+            "📤 <b>Forward</b> — Send with 'Forwarded from' label\n"
+            "📋 <b>Copy</b> — Send as a clean copy (no forwarded label)\n\n"
+            "Choose a mode after replying.",
             parse_mode=ParseMode.HTML,
         )
 
-    wait = await message.reply_text("📡 Broadcasting…")
+    uid = message.from_user.id
+    _pending_broadcasts[uid] = {
+        "from_chat": message.reply_to_message.chat.id,
+        "msg_id": message.reply_to_message.id,
+    }
+
+    buttons = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📤 Forward", callback_data=f"bc_mode:forward:{uid}"),
+            InlineKeyboardButton("📋 Copy", callback_data=f"bc_mode:copy:{uid}"),
+        ],
+        [InlineKeyboardButton("❌ Cancel", callback_data=f"bc_mode:cancel:{uid}")],
+    ])
+
+    await message.reply_text(
+        "📡 <b>Broadcast Ready</b>\n\n"
+        "Choose how to send this message to all groups:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=buttons,
+    )
+
+
+async def _do_broadcast(client, from_chat: int, msg_id: int, mode: str):
+    cursor = db.db["groups"].find({}, {"chat_id": 1})
+    rows = await cursor.to_list(length=10000)
+    unique_chats = {row["chat_id"] for row in rows}
+
+    # Also include chats from games collection
+    cursor2 = db.db["games"].find({}, {"chat_id": 1})
+    rows2 = await cursor2.to_list(length=10000)
+    unique_chats.update(row["chat_id"] for row in rows2)
+
+    sent, failed = 0, 0
+    for cid in unique_chats:
+        try:
+            if mode == "forward":
+                await client.forward_messages(cid, from_chat, msg_id)
+            else:
+                await client.copy_message(cid, from_chat, msg_id)
+            sent += 1
+            await asyncio.sleep(0.05)
+        except Exception:
+            failed += 1
+    return sent, failed
+
+
+@Client.on_callback_query(filters.regex(r"^bc_mode:(forward|copy|cancel):(\d+)$") & OWNER_FILTER)
+async def broadcast_mode_cb(client, query):
+    mode = query.matches[0].group(1)
+    uid = int(query.matches[0].group(2))
+
+    if mode == "cancel":
+        _pending_broadcasts.pop(uid, None)
+        await query.message.edit_text("❌ Broadcast cancelled.", parse_mode=ParseMode.HTML)
+        return await query.answer("Cancelled.")
+
+    pending = _pending_broadcasts.pop(uid, None)
+    if not pending:
+        await query.message.edit_text("⚠️ Session expired. Run /broadcast again.", parse_mode=ParseMode.HTML)
+        return await query.answer()
+
+    mode_label = "📤 Forwarding" if mode == "forward" else "📋 Copying"
+    await query.message.edit_text(f"{mode_label} to all groups…", parse_mode=ParseMode.HTML)
+    await query.answer("Broadcasting…")
+
     try:
-        cursor = db.db["games"].find({}, {"chat_id": 1})
-        rows = await cursor.to_list(length=10000)
-        unique_chats = {row["chat_id"] for row in rows}
-
-        sent, failed = 0, 0
-        for cid in unique_chats:
-            try:
-                await message.reply_to_message.forward(cid)
-                sent += 1
-            except Exception:
-                failed += 1
-
-        await wait.edit_text(
-            f"📡 <b>Broadcast complete!</b>\n"
-            f"✅ Sent: {sent} | ❌ Failed: {failed}",
+        sent, failed = await _do_broadcast(client, pending["from_chat"], pending["msg_id"], mode)
+        icon = "📤" if mode == "forward" else "📋"
+        await query.message.edit_text(
+            f"{icon} <b>Broadcast Complete!</b>\n\n"
+            f"✅ <b>Sent:</b> {sent}\n"
+            f"❌ <b>Failed:</b> {failed}\n"
+            f"📦 <b>Total:</b> {sent + failed}",
             parse_mode=ParseMode.HTML,
         )
     except Exception as e:
-        await wait.edit_text(f"❌ Error: <code>{html.escape(str(e))}</code>", parse_mode=ParseMode.HTML)
+        await query.message.edit_text(
+            f"❌ Broadcast error: <code>{html.escape(str(e))}</code>",
+            parse_mode=ParseMode.HTML,
+        )
 
 
 @Client.on_message(filters.command("givemom") & OWNER_FILTER)
