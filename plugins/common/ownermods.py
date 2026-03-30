@@ -26,11 +26,18 @@ BROADCAST_RUNNING = False
 BROADCAST_CANCEL = False
 BOT_START_TIME = time.time()
 
+
 def uptime():
     secs = int(time.time() - BOT_START_TIME)
     h = secs // 3600
     m = (secs % 3600) // 60
     return f"{h}h {m}m"
+
+async def _col():
+    await db.ensure_pool()
+    if db.db is None:
+        raise RuntimeError("Database unavailable.")
+    return db.db
 
 @Client.on_message(filters.command("fetch"))
 async def fetch_dashboard(client, message):
@@ -214,27 +221,36 @@ async def broad_cmd(client, message):
     else:
         return await message.reply_text("Nothing to broadcast 🤨")
 
+    # ✅ SAFE DB FETCH
     try:
-        user_cursor = db.db["user_stats"].find({}, {"user_id": 1})
-        user_rows = await user_cursor.to_list(length=100000)
-        group_cursor = db.db["games"].find({}, {"chat_id": 1})
-        group_rows = await group_cursor.to_list(length=100000)
+        database = await _col()
+
+        user_rows = await database["user_stats"].find(
+            {}, {"user_id": 1}
+        ).to_list(length=None)
+
+        group_rows = await database["groups"].find(
+            {}, {"chat_id": 1}
+        ).to_list(length=None)
+
     except Exception as e:
-        print(e)
-        return await message.reply_text("DB error.")
+        print("[BROADCAST DB ERROR]", e)
+        return await message.reply_text("❌ Database not available.")
 
-    users = list({u["user_id"] for u in user_rows})
-    groups = list({g["chat_id"] for g in group_rows})
+    # ✅ CLEAN EXTRACTION
+    users = list({u.get("user_id") for u in user_rows if u.get("user_id")})
+    groups = list({g.get("chat_id") for g in group_rows if g.get("chat_id")})
 
+    if not users and not groups:
+        return await message.reply_text("⚠️ No users or groups found.")
+
+    # ✅ TARGET SELECTION
     if btype == "users":
         targets = users
     elif btype == "groups":
         targets = groups
     else:
         targets = users + groups
-
-    total_users = len(users)
-    total_groups = len(groups)
 
     BROADCAST_CACHE[uid] = {
         "text": text_payload,
@@ -247,25 +263,22 @@ async def broad_cmd(client, message):
 
     preview = (
         f"📡 <b>Broadcast Receipt</b>\n\n"
-        f"👤 Users: <b>{total_users}</b>\n"
-        f"👥 Groups: <b>{total_groups}</b>\n"
+        f"👤 Users: <b>{len(users)}</b>\n"
+        f"👥 Groups: <b>{len(groups)}</b>\n"
         f"🎯 Targets: <b>{len(targets)}</b>\n\n"
         f"Type: <b>{btype}</b>"
     )
 
     buttons = InlineKeyboardMarkup(
         [
-            [
-                InlineKeyboardButton("🚀 Start Broadcast", callback_data="broad_start")
-            ],
-            [
-                InlineKeyboardButton("❌ Cancel", callback_data="broad_cancel")
-            ]
+            [InlineKeyboardButton("🚀 Start Broadcast", callback_data="broad_start")],
+            [InlineKeyboardButton("❌ Cancel", callback_data="broad_cancel")]
         ]
     )
 
     await message.reply_text(preview, parse_mode=ParseMode.HTML, reply_markup=buttons)
 
+    # preview message
     if source_msg:
         await source_msg.copy(message.chat.id)
     else:
@@ -303,11 +316,9 @@ async def broad_callback(client, cb):
     text_payload = data["text"]
     btype = data["type"]
 
-    users = data["users"]
-    groups = data["groups"]
+    # ✅ FAST LOOKUP
+    user_set = set(data["users"])
 
-    total_users = len(users)
-    total_groups = len(groups)
     total_targets = len(targets)
 
     sent_users = 0
@@ -319,14 +330,6 @@ async def broad_callback(client, cb):
 
     progress = await msg.edit_text(
         "📡 <b>Broadcast Progressing...</b>\n\n"
-        f"◇ Total Users: {total_users}\n"
-        f"◇ Total Groups: {total_groups}\n"
-        f"◇ Sent PVT Messages: 0\n"
-        f"◇ Sent Group Messages: 0\n"
-        f"◇ Successful: 0\n"
-        f"◇ Blocked Users: 0\n"
-        f"◇ Deleted Accounts: 0\n"
-        f"◇ Unsuccessful: 0\n\n"
         f"⏳ Progress: 0/{total_targets} (0%)",
         parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup(
@@ -341,18 +344,17 @@ async def broad_callback(client, cb):
             return await progress.edit_text("⛔ Broadcast cancelled midway.")
 
         try:
-
             if btype == "forward":
-                sent_msg = await source_msg.forward(tid)
+                await source_msg.forward(tid)
 
             elif btype == "copy":
-                sent_msg = await source_msg.copy(tid)
+                await source_msg.copy(tid)
 
             else:
                 if source_msg:
-                    sent_msg = await source_msg.copy(tid)
+                    await source_msg.copy(tid)
                 else:
-                    sent_msg = await client.send_message(
+                    await client.send_message(
                         tid,
                         text_payload,
                         parse_mode=ParseMode.HTML
@@ -360,12 +362,12 @@ async def broad_callback(client, cb):
 
             success += 1
 
-            if tid in users:
+            if tid in user_set:
                 sent_users += 1
             else:
                 sent_groups += 1
 
-            await asyncio.sleep(0.08)
+            await asyncio.sleep(0.07)
 
         except pyrogram.errors.UserIsBlocked:
             blocked += 1
@@ -379,21 +381,19 @@ async def broad_callback(client, cb):
         except Exception:
             failed += 1
 
+        # 🔄 UPDATE EVERY 40
         if i % 40 == 0:
-
             percent = round((i / total_targets) * 100, 2)
 
             try:
                 await progress.edit_text(
                     "📡 <b>Broadcast Progressing...</b>\n\n"
-                    f"◇ Total Users: {total_users}\n"
-                    f"◇ Total Groups: {total_groups}\n"
-                    f"◇ Sent PVT Messages: {sent_users}\n"
-                    f"◇ Sent Group Messages: {sent_groups}\n"
-                    f"◇ Successful: {success}\n"
-                    f"◇ Blocked Users: {blocked}\n"
-                    f"◇ Deleted Accounts: {deleted}\n"
-                    f"◇ Unsuccessful: {failed}\n\n"
+                    f"👤 Sent Users: {sent_users}\n"
+                    f"👥 Sent Groups: {sent_groups}\n"
+                    f"✅ Success: {success}\n"
+                    f"🚫 Blocked: {blocked}\n"
+                    f"👻 Deleted: {deleted}\n"
+                    f"❌ Failed: {failed}\n\n"
                     f"⏳ Progress: {i}/{total_targets} ({percent}%)",
                     parse_mode=ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup(
