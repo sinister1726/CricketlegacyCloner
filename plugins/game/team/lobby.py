@@ -582,37 +582,6 @@ async def refresh_members_callback(client, cq):
     )
     await cq.answer("Updated ✔️")
 
-@Client.on_message(filters.command("testmem") & filters.group)
-async def test_members_thumbnail(client, message):
-    chat = message.chat
-    try:
-        members = []
-        async for m in client.get_chat_members(chat.id, limit=50):
-            if m.user and not m.user.is_bot: members.append(m.user)
-
-        if len(members) < 2: return await message.reply_text("❌ Need at least 2 users to test thumbnail.")
-        cap_a, cap_b = random.sample(members, 2)
-    except Exception as e:
-        print(e)
-        return await message.reply_text("❌ Failed to fetch members.")
-
-    path_a = await get_fast_avatar(client, cap_a.id)
-    path_b = await get_fast_avatar(client, cap_b.id)
-
-    if not path_a or not path_b: return await message.reply_text("❌ Could not fetch avatars.")
-
-    thumb = generate_members_thumbnail(
-        cap_a_name=cap_a.first_name or "Captain A", cap_b_name=cap_b.first_name or "Captain B",
-        cap_a_avatar_path=path_a, cap_b_avatar_path=path_b, group_name=chat.title or "Cricket Arena"
-    )
-
-    await message.reply_photo(
-        photo=thumb,
-        caption=("🧪 **MEMBERS THUMBNAIL TEST**\n"f"👑 Captain A: {cap_a.first_name}\n"f"👑 Captain B: {cap_b.first_name}\n\n_This is a test render only_"),
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-
 @Client.on_message(filters.command("add") & filters.group)
 @host_only
 async def add_player(client, message):

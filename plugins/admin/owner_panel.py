@@ -77,7 +77,6 @@ def _panel_kb() -> InlineKeyboardMarkup:
                 InlineKeyboardButton("⏱ Uptime", callback_data="own:uptime"),
             ],
             [
-                InlineKeyboardButton("🧢 Mods", callback_data="own:mods"),
                 InlineKeyboardButton("📡 Broadcast Help", callback_data="own:broad"),
             ],
             [
@@ -108,11 +107,9 @@ def _panel_text() -> str:
         "• /restart – Restart the bot process\n"
         "• /logs <code>[n]</code> – Tail recent log lines\n\n"
         "<b>Moderation</b>\n"
-        "• /addmod <code>user tier</code> · /rmmod · /mods\n"
         "• /restrict · /unrestrict · /restricted\n"
         "• /broad <code>-forward|-copy|-users|-groups</code>\n\n"
         "<b>Other</b>\n"
-        "• /fetch – Full system dashboard\n"
         "• /active – Active matches\n"
         "• /leave <code>chat_id</code> – Make the bot leave a chat\n"
         "━━━━━━━━━━━━━━━━━━━━━━━"

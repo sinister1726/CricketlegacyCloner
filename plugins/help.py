@@ -131,16 +131,14 @@ HELP_USER_TEXT = (
     "Track your stats, profile and progress 📈\n\n"
     "📊 <b>Profile &amp; Stats</b>\n"
     "/userinfo [user] – full profile (alias /profile, /userstats)\n"
+    "/stats – global bot stats\n"
     "/user_ranks – leaderboard of top players\n"
     "/achievements – your unlocked achievements\n"
     "/compare <code>@user1 @user2</code> – compare two players\n"
-    "/analyze [user] – AI-powered playstyle analysis\n"
-    "/personality – fun cricket personality test\n\n"
+    "/analyze [user] – AI-powered playstyle analysis\n\n"
     "💬 <b>Other</b>\n"
     "/start – open the main menu (in DM)\n"
-    "/help – this help menu\n"
-    "/feedback <code>text</code> – send feedback (DM)\n"
-    "/bug <code>text</code> – report a bug (DM)"
+    "/help – this help menu"
 )
 
 HELP_COMMANDS_TEXT = (
@@ -161,9 +159,7 @@ HELP_COMMANDS_TEXT = (
     "/score · /graph · /endgame\n\n"
     "👤 <b>Profile &amp; Stats</b>\n"
     "/userinfo · /profile · /userstats · /stats\n"
-    "/user_ranks · /achievements · /compare · /analyze\n"
-    "💬 <b>Support</b>\n"
-    "/feedback · /bug"
+    "/user_ranks · /achievements · /compare · /analyze"
 )
 
 

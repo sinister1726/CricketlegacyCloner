@@ -411,7 +411,15 @@ async def show_dna_callback(client, query: CallbackQuery):
     await query.answer()
     uid = int(query.data.split(":")[1])
 
-    from plugins.utilities.personality import get_personality, DNA_PROFILES
+    from plugins.utilities.analyze import _get_personality as get_personality
+    DNA_PROFILES = {
+        "Powerhouse 💪": {"tagline": "Run-machine. The scoreboard belongs to you.", "trait": "Unstoppable batting dominance.", "tip": "Keep piling runs — centuries are your calling card.", "color": "🔴"},
+        "Aggressive ⚔️": {"tagline": "Big swings, bigger boundaries.", "trait": "High-octane strike rate with explosive hitting.", "tip": "Channel the aggression — six every over is the goal.", "color": "🟠"},
+        "Spin Wizard 🌀": {"tagline": "Batters can't read you. That's the point.", "trait": "Low economy, high wickets — bowling is your art.", "tip": "Stay patient, vary pace, and watch them crumble.", "color": "🟣"},
+        "Strategic 🧠": {"tagline": "Calculated, composed, and always one step ahead.", "trait": "High average, consistent performer.", "tip": "Play the long game — patience is your superpower.", "color": "🔵"},
+        "Finisher 🏆": {"tagline": "Best when the match is on the line.", "trait": "Top win rate and Man of the Match performances.", "tip": "Keep delivering in pressure moments.", "color": "🟡"},
+        "Lucky Charm 🍀": {"tagline": "Unpredictable, chaotic, but somehow it works.", "trait": "Rising star — personality still forming.", "tip": "Play more matches to unlock your true potential.", "color": "🟢"},
+    }
 
     try:
         stats = await _get_user_stats(uid)

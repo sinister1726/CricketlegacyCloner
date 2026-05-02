@@ -96,29 +96,3 @@ async def score_cmd(client, message: Message):
             print(f"Critical Scorecard Failure: {inner_e}")
             await message.reply_text("❌ <b>Scorecard Sync Error. Please bowl one ball to re-initialize game state.</b>", parse_mode=ParseMode.HTML)
 
-@Client.on_message(filters.command("testfinal"))
-async def test_final_scorecard(client, message):
-    test_data = {
-        "score_a": "124/4",
-        "score_b": "125/2",
-        "winner_name": "Team B",
-        "bat_a_name": "⏤͟͞𝗔𝗥𝗘𝗡 𝗛𝗘𝗥𝗘ツ",
-        "bat_a_r": 54, "bat_a_b": 30, "bat_a_4": 4, "bat_a_6": 3,
-        "bowl_a_name": "𝐚 𝛂 𝐫 𝛐 𝐡 𝐢 🥂",
-        "bowl_a_w": 1, "bowl_a_r_c": 22,
-        "bat_b_name": "𝐚 𝛂 𝐫 𝛐 𝐡 𝐢 🥂",
-        "bat_b_r": 62, "bat_b_b": 35, "bat_b_4": 6, "bat_b_6": 4,
-        "bowl_b_name": "𝑲𝑰𝑵𝑮 ˹𐩃𝑲˼║ ツ",
-        "bowl_b_w": 3, "bowl_b_r_c": 18
-    }
-
-    from plugins.game.team.scorecard import build_final_summary_image
-    try:
-        img = build_final_summary_image(test_data)
-        await message.reply_photo(
-            photo=img,
-            caption="🏁 <b>Match Testing Complete!</b>\nFinal summary generated with example data.",
-            parse_mode=ParseMode.HTML
-        )
-    except Exception as e:
-        await message.reply_text(f"❌ <b>Test Failed:</b> {e}")
