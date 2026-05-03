@@ -12,7 +12,8 @@ from database.games import (
     user_in_other_game,
 )
 from plugins.game.team import ACTIVE_MATCHES
-from Assets.files import MEMBERS_IMAGE
+from Assets.files import MEMBERS_IMAGE, SOLO_MODE_IMAGE
+from pyrogram.types import InputMediaPhoto
 from utils.guards import is_group_admin, ensure_user
 
 SOLO_JOIN_SECONDS = 120
@@ -98,26 +99,36 @@ async def solo_mode_selected(client, query):
     }
     match = ACTIVE_MATCHES[chat_id]
 
+    solo_caption = (
+        "👤 <b>𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘 𝗦𝗘𝗟𝗘𝗖𝗧𝗘𝗗</b>\n"
+        "────┈┄┄╌╌╌╌┄┄┈────\n\n"
+        "📢 Join using /joingame\n"
+        "📤 Leave using /leavegame\n"
+        f"⏳ Lobby closes in <b>{SOLO_JOIN_SECONDS // 60} minutes</b>.\n"
+        "⚡ Minimum <b>3 players</b> required to start.\n\n"
+        "🔧 Admins: <code>/extend 30</code> | <code>/forcestart</code>"
+    )
     try:
-        await query.message.edit_caption(
-            caption=(
-                "👤 <b>𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘 𝗦𝗘𝗟𝗘𝗖𝗧𝗘𝗗</b>\n"
-                "────┈┄┄╌╌╌╌┄┄┈────\n\n"
-                "📢 Join using /joingame\n"
-                "📤 Leave using /leavegame\n"
-                f"⏳ Lobby closes in <b>{SOLO_JOIN_SECONDS // 60} minutes</b>.\n"
-                "⚡ Minimum <b>3 players</b> required to start.\n\n"
-                "🔧 Admins: <code>/extend 30</code> | <code>/forcestart</code>"
-            ),
-            parse_mode=ParseMode.HTML,
+        await query.message.edit_media(
+            media=InputMediaPhoto(
+                media=SOLO_MODE_IMAGE,
+                caption=solo_caption,
+                parse_mode=ParseMode.HTML,
+            )
         )
     except Exception:
-        await client.send_message(
-            chat_id,
-            "👤 <b>𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘</b> — Join via /joingame\n"
-            f"⏳ Closes in {SOLO_JOIN_SECONDS // 60} min | Min 3 players",
-            parse_mode=ParseMode.HTML,
-        )
+        try:
+            await query.message.edit_caption(
+                caption=solo_caption,
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception:
+            await client.send_message(
+                chat_id,
+                "👤 <b>𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘</b> — Join via /joingame\n"
+                f"⏳ Closes in {SOLO_JOIN_SECONDS // 60} min | Min 3 players",
+                parse_mode=ParseMode.HTML,
+            )
 
     match["join_timer_task"] = asyncio.create_task(_solo_join_timer(client, chat_id))
     asyncio.create_task(_create_solo_game_db(game_id, chat_id, group_title, user))

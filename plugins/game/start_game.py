@@ -27,7 +27,7 @@ from database.games import is_game_active
 
 # ── constants ────────────────────────────────────────────────────────────────
 
-VOTE_IMAGE = "https://graph.org/file/83891b0fe4f39c210dbe9-e7b0d341b404cb1cb1.jpg"
+VOTE_IMAGE = "https://graph.org/file/82fa7ec61ef263e7fc5ea-93eb782dc413885a2c.jpg"
 VOTES_REQUIRED = 3
 VOTE_TIMEOUT = 120  # seconds
 
