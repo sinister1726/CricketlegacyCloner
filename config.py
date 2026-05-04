@@ -3,7 +3,7 @@ import os
 class Config:
     API_ID = 25887786
     API_HASH = "e4201277f5f2883f22c150167bd24479"
-    BOT_TOKEN = "8658804006:AAFCrnrsTOYKolMSv7AFWQpGv0VjUm4Gf24"
+    BOT_TOKEN = "8264820868:AAGfpaMQ0uiO_N0rfCskR6Jfq0uTqhoe-Kk"
 
     MONGO_URL = "mongodb+srv://bsdk:betichod@cluster0.fgj1r9z.mongodb.net/Cricketlegacy?retryWrites=true&w=majority"
 
