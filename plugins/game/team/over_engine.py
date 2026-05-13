@@ -975,10 +975,17 @@ async def end_match(match, forced: bool = False):
 
     res_title = "🏏 𝗠𝗔𝗧𝗖𝗛 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘" if winner_key not in ("Tie", "No Result") else "🤝 𝗠𝗔𝗧𝗖𝗛 𝗧𝗜𝗘𝗗"
 
+    _t = match.get("teams", {})
+    _tname = {
+        "A": _t.get("A", {}).get("name") or "Team A",
+        "B": _t.get("B", {}).get("name") or "Team B",
+    }
+    winner_display = _tname.get(winner_key, winner_key)
+
     try:
         await client.send_message(
             chat_id,
-            f"{res_title}\n\n🏆 Team {winner_key} {margin}"
+            f"{res_title}\n\n🏆 {winner_display} {margin}"
         )
     except:
         pass

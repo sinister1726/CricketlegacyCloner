@@ -418,4 +418,10 @@ async def save_match_stats(match, winner_team):
     except Exception as _ve:
         print(f"Venue stats save error: {_ve}")
 
+    try:
+        from database.group_records import update_group_records
+        await update_group_records(match, players, winner_team)
+    except Exception as _gr:
+        print(f"Group records update error: {_gr}")
+
     print(f"✅ Match {game_id} full stats and milestones saved.")

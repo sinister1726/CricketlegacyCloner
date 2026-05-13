@@ -173,6 +173,18 @@ async def set_captain(client, query):
         parse_mode=ParseMode.HTML
     )
 
+    # Team names: non-blocking background ask (if setting enabled)
+    if match:
+        try:
+            from database.group_settings import get_setting as _gs_tn
+            from plugins.game.team.team_names import ask_team_names
+            if await _gs_tn(chat_id, "team_names"):
+                asyncio.create_task(
+                    ask_team_names(client, match, capA["user_id"], capB["user_id"])
+                )
+        except Exception:
+            pass
+
     await send_toss(client, chat_id, game_id)
 
 

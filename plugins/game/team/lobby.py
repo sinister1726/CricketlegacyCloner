@@ -407,16 +407,20 @@ async def members(client, message):
             if k == "A": score_a = f"{r}/{w} ({ov} ov)"
             else: score_b = f"{r}/{w} ({ov} ov)"
 
+    _tn    = match.get("teams", {}) if match else {}
+    _na    = (_tn.get("A", {}).get("name") or "TEAM A").upper()
+    _nb    = (_tn.get("B", {}).get("name") or "TEAM B").upper()
+
     text = (
         "📊 **𝗠𝗔𝗧𝗖𝗛 𝗢𝗩𝗘𝗥𝗩𝗜𝗘𝗪**\n"
         "────┈┄┄╌╌╌╌┄┄┈────\n"
         f"👑 **𝗛𝗼𝘀𝘁:** {host_name}\n"
         f"⏳ **𝗢𝘃𝗲𝗿𝘀:** {overs_val} | 📍 **{get_status_text()}**\n"
         "────┈┄┄╌╌╌╌┄┄┈────\n"
-        f"🌊 **𝗧𝗘𝗔𝗠 𝗔** - `{score_a}`\n"
+        f"🌊 **{_na}** - `{score_a}`\n"
         f"╰⊚ {team_activity('A')}\n"
         f"{format_team_list('A')}\n\n"
-        f"🔥 **𝗧𝗘𝗔𝗠 𝗕** - `{score_b}`\n"
+        f"🔥 **{_nb}** - `{score_b}`\n"
         f"╰⊚ {team_activity('B')}\n"
         f"{format_team_list('B')}\n"
         "────┈┄┄╌╌╌╌┄┄┈────\n"
@@ -559,16 +563,20 @@ async def refresh_members_callback(client, cq):
     overs_val = match.get("overs") if match else game.get("overs", "N/A")
     host_name = match.get("host_name") if match else "Host"
 
+    _tn    = match.get("teams", {}) if match else {}
+    _na    = (_tn.get("A", {}).get("name") or "TEAM A").upper()
+    _nb    = (_tn.get("B", {}).get("name") or "TEAM B").upper()
+
     text = (
         "📊 **𝗠𝗔𝗧𝗖𝗛 𝗢𝗩𝗘𝗥𝗩𝗜𝗘𝗪**\n"
         "────┈┄┄╌╌╌╌┄┄┈────\n"
         f"👑 **𝗛𝗼𝘀𝘁:** {host_name}\n"
         f"⏳ **𝗢𝘃𝗲𝗿𝘀:** {overs_val} | 📍 **{get_status_text()}**\n"
         "────┈┄┄╌╌╌╌┄┄┈────\n"
-        f"🌊 **𝗧𝗘𝗔𝗠 𝗔** - `{score_a}`\n"
+        f"🌊 **{_na}** - `{score_a}`\n"
         f"╰⊚ {team_activity('A')}\n"
         f"{format_team_list('A')}\n\n"
-        f"🔥 **𝗧𝗘𝗔𝗠 𝗕** - `{score_b}`\n"
+        f"🔥 **{_nb}** - `{score_b}`\n"
         f"╰⊚ {team_activity('B')}\n"
         f"{format_team_list('B')}\n"
         "────┈┄┄╌╌╌╌┄┄┈────\n"

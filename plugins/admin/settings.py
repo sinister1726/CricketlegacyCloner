@@ -34,6 +34,7 @@ FREE_FEATURES = [
     ("ai_summary",         "🧠 AI Summary"),
     ("achievement_alerts", "🔔 Achievements"),
     ("auto_play_again",    "🔄 Play Again"),
+    ("team_names",         "🏷 Team Names"),
 ]
 
 PREMIUM_FEATURES = [
@@ -75,6 +76,15 @@ FEATURE_DESC = {
         "🔄 <b>Auto Play Again</b>\n\n"
         "After every match a 'Play Again?' prompt appears\n"
         "in the group so players can quickly start a new game."
+    ),
+    "team_names": (
+        "🏷 <b>Custom Team Names</b>\n\n"
+        "After captains are assigned, both are DM'd by the bot\n"
+        "and have <b>45 seconds</b> to choose a name for their team.\n\n"
+        "Examples: Royal Nexors, Thunder Kings, Desert Strikers…\n\n"
+        "Names appear in the match overview, result message,\n"
+        "and everywhere Team A/B is normally shown.\n\n"
+        "🆓 <b>Free feature — default off.</b>"
     ),
     "spam_free": (
         "🛡 <b>Spam Free Mode</b>  <i>(Premium)</i>\n\n"

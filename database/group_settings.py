@@ -9,6 +9,7 @@ DEFAULTS = {
     "edge_rule":          False,
     "disabled_numbers":   [],
     "ball_timeout":       60,
+    "team_names":         False,
 }
 
 _cache: dict = {}
