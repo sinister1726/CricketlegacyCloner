@@ -47,3 +47,10 @@ class Config:
     LOG_CHANNEL = int(
         os.getenv("LOG_CHANNEL", "-1003692127639")
     )
+
+    # Clone Bot System
+    IS_CLONE = os.getenv("IS_CLONE", "0") == "1"
+    CLONE_OWNER_ID = int(os.getenv("CLONE_OWNER_ID", "0")) if os.getenv("CLONE_OWNER_ID", "0") != "0" else None
+    MAIN_BOT_USERNAME = os.getenv("MAIN_BOT_USERNAME", "@CricketLegacy2Bot")
+    MAIN_SUPPORT = os.getenv("MAIN_SUPPORT", "https://t.me/clg_fun_zone")
+    MAIN_SUPPORT_USERNAME = os.getenv("MAIN_SUPPORT_USERNAME", "@clg_fun_zone")

@@ -32,6 +32,9 @@ async def migrate():
 
     await database["group_settings"].create_index("chat_id", unique=True)
     await database["premium_groups"].create_index("chat_id", unique=True)
+    await database["user_premium"].create_index("user_id", unique=True)
+    await database["user_clones"].create_index("user_id", unique=True)
+    await database["clone_settings"].create_index("owner_id", unique=True)
     await database["venue_stats"].create_index([("user_id", 1), ("chat_id", 1)], unique=True)
     await database["venue_stats"].create_index([("chat_id", 1), ("runs", -1)])
     await database["venue_stats"].create_index([("user_id", 1), ("runs", -1)])

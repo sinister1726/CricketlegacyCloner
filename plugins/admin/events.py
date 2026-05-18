@@ -392,6 +392,9 @@ async def _do_register(client, responder, user, event, event_id, *, team=None, b
 
 @Client.on_message(filters.command("register"))
 async def register_cmd(client, message):
+    from config import Config
+    if Config.IS_CLONE:
+        return await message.reply_text("🔒 <b>Events are disabled in clone bots.</b>", parse_mode=ParseMode.HTML)
     user = message.from_user
     if not user:
         return
@@ -570,6 +573,9 @@ async def evreg_cancel_cb(client, query):
 
 @Client.on_message(filters.command("deregister"))
 async def deregister_cmd(client, message):
+    from config import Config
+    if Config.IS_CLONE:
+        return await message.reply_text("🔒 <b>Events are disabled in clone bots.</b>", parse_mode=ParseMode.HTML)
     event = await _get_active_event()
     if not event:
         return await message.reply_text("😴 No active event to deregister from.", parse_mode=ParseMode.HTML)
@@ -593,6 +599,9 @@ async def deregister_cmd(client, message):
 
 @Client.on_message(filters.command(["list_events", "events"]))
 async def list_events_cmd(client, message):
+    from config import Config
+    if Config.IS_CLONE:
+        return await message.reply_text("🔒 <b>Events are disabled in clone bots.</b>", parse_mode=ParseMode.HTML)
     cursor = _events_col().find({}).sort("created_at", -1).limit(10)
     events = await cursor.to_list(10)
     if not events:

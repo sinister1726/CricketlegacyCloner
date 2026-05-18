@@ -360,6 +360,12 @@ async def _over_limit_panel(chat_id: int):
 
 @Client.on_message(filters.command("settings") & filters.group)
 async def settings_cmd(client: Client, message: Message):
+    from config import Config
+    if Config.IS_CLONE:
+        return await message.reply_text(
+            "🔒 <b>/settings is disabled in clone bots.</b>",
+            parse_mode=ParseMode.HTML,
+        )
     chat_id = message.chat.id
     if not await is_group_admin(client, chat_id, message.from_user.id):
         return await message.reply_text("⚠️ Only group admins can use /settings.", parse_mode=ParseMode.HTML)

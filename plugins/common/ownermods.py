@@ -29,6 +29,13 @@ async def _col():
 async def broad_cmd(client, message):
     global BROADCAST_RUNNING
 
+    from config import Config as _Config
+    if _Config.IS_CLONE:
+        return await message.reply_text(
+            "🔒 <b>Broadcast is disabled in clone bots.</b>",
+            parse_mode="html",
+        )
+
     uid = message.from_user.id
     if uid != OWNER_ID:
         return
