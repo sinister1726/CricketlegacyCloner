@@ -9,7 +9,8 @@ User commands (DM only):
 Owner commands:
   /givecp <user_id> [days]  — grant clone premium
   /revokecp <user_id>       — revoke clone premium (also kills bot)
-  /clones                   — list all active clones with owner, stats & expiry
+  /clones [page]            — paginated list of all clones (5/page),
+                              with per-clone user & group counts + grand totals
   /broadall                 — broadcast via ALL active clone bots
   /transferclone @username  — merge a clone's data into main bot DB
 """
@@ -19,6 +20,7 @@ import sys
 import asyncio
 import subprocess
 import httpx
+import math
 
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
@@ -45,9 +47,9 @@ if Config.IS_CLONE:
     pass
 else:
     OWNER_FILTER = filters.user(list(Config.OWNER_IDS))
+    _PER_PAGE    = 5
 
     def _make_db_prefix(bot_username: str) -> str:
-        """Compute deterministic collection prefix from bot username."""
         return f"c_{bot_username.replace('@', '').lower()}_"
 
     async def _validate_token(token: str) -> dict | None:
@@ -79,15 +81,14 @@ else:
         )
 
     async def respawn_all_clones():
-        """Called on main bot startup — re-spawns all running clones."""
         try:
             active = await get_all_active_clones()
             if not active:
                 return
             print(f"🧬 Re-spawning {len(active)} clone(s)…")
             for entry in active:
-                uid   = entry["user_id"]
-                token = entry.get("token")
+                uid    = entry["user_id"]
+                token  = entry.get("token")
                 bot_un = entry.get("bot_username", "")
                 if not token:
                     continue
@@ -95,7 +96,7 @@ else:
                     await clear_clone_process(uid)
                     continue
                 try:
-                    proc = _spawn_clone(uid, token, bot_un)
+                    proc   = _spawn_clone(uid, token, bot_un)
                     prefix = _make_db_prefix(bot_un)
                     await set_clone_process(uid, token, proc.pid, bot_un, db_prefix=prefix)
                     print(f"🧬 Re-spawned clone for user {uid} (pid {proc.pid})")
@@ -104,6 +105,110 @@ else:
                     print(f"⚠️ Failed to re-spawn clone for {uid}: {e}")
         except Exception as e:
             print(f"⚠️ respawn_all_clones error: {e}")
+
+    # ── helpers ───────────────────────────────────────────────────────────────
+
+    async def _count_clone_collections(prefix: str) -> tuple[int, int]:
+        """Return (user_count, group_count) for a clone's prefixed collections."""
+        from database.connection import db
+        uc = gc = 0
+        try:
+            uc = await db.real_db[f"{prefix}users"].count_documents({})
+        except Exception:
+            pass
+        try:
+            gc = await db.real_db[f"{prefix}groups"].count_documents({})
+        except Exception:
+            pass
+        return uc, gc
+
+    async def _build_clones_page(
+        client: Client,
+        all_clones: list,
+        page: int,
+    ) -> tuple[str, InlineKeyboardMarkup]:
+        from datetime import datetime
+
+        total_clones = len(all_clones)
+        total_pages  = max(1, math.ceil(total_clones / _PER_PAGE))
+        page         = max(0, min(page, total_pages - 1))
+
+        chunk = all_clones[page * _PER_PAGE : (page + 1) * _PER_PAGE]
+
+        grand_users  = 0
+        grand_groups = 0
+        lines = [
+            f"🧬 <b>ACTIVE CLONES</b>  •  <b>{total_clones}</b> total\n"
+            f"━━━━━━━━━━━━━━━━━━━━━"
+        ]
+
+        for i, entry in enumerate(chunk, page * _PER_PAGE + 1):
+            uid     = entry["user_id"]
+            bot_un  = entry.get("bot_username", "unknown")
+            pid     = entry.get("pid", "?")
+            prefix  = entry.get("db_prefix") or _make_db_prefix(bot_un)
+            started = entry.get("started_at")
+            start_str = started.strftime("%d %b %Y") if started else "?"
+
+            prem = await get_clone_premium(uid)
+            exp  = prem.get("expires_at") if prem else None
+            if exp:
+                remaining = (exp - datetime.utcnow()).days
+                exp_str   = f"{exp.strftime('%d %b %Y')} ({remaining}d)"
+            else:
+                exp_str = "?"
+
+            try:
+                user      = await client.get_users(uid)
+                user_name = f"<a href='tg://user?id={uid}'>{user.first_name}</a>"
+            except Exception:
+                user_name = f"<code>{uid}</code>"
+
+            uc, gc = await _count_clone_collections(prefix)
+            grand_users  += uc
+            grand_groups += gc
+
+            lines.append(
+                f"\n<b>{i}.</b> 🤖 {bot_un}\n"
+                f"   👤 Owner: {user_name} (<code>{uid}</code>)\n"
+                f"   👥 Users: <b>{uc:,}</b>  •  🏟 Groups: <b>{gc:,}</b>\n"
+                f"   🆔 PID: <code>{pid}</code>  •  📅 Since {start_str}\n"
+                f"   ⏳ Expires: <b>{exp_str}</b>"
+            )
+
+        # ── grand totals (count ALL clones, not just this page) ───────────────
+        all_uc = all_gc = 0
+        for entry in all_clones:
+            pfx = entry.get("db_prefix") or _make_db_prefix(entry.get("bot_username", ""))
+            u, g = await _count_clone_collections(pfx)
+            all_uc += u
+            all_gc += g
+
+        lines.append(
+            f"\n━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 <b>Grand Total</b>\n"
+            f"   🤖 Bots: <b>{total_clones}</b>\n"
+            f"   👥 Total Users: <b>{all_uc:,}</b>\n"
+            f"   🏟 Total Groups: <b>{all_gc:,}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━"
+        )
+
+        text = "\n".join(lines)
+
+        # ── pagination buttons ────────────────────────────────────────────────
+        nav_row = []
+        if page > 0:
+            nav_row.append(InlineKeyboardButton("◀️ Prev", callback_data=f"clones_pg_{page - 1}"))
+        nav_row.append(
+            InlineKeyboardButton(f"📄 {page + 1} / {total_pages}", callback_data="clones_pg_noop")
+        )
+        if page < total_pages - 1:
+            nav_row.append(InlineKeyboardButton("Next ▶️", callback_data=f"clones_pg_{page + 1}"))
+
+        kb_rows = [nav_row] if total_pages > 1 else []
+        kb = InlineKeyboardMarkup(kb_rows) if kb_rows else None
+
+        return text, kb
 
     # ── /clone ────────────────────────────────────────────────────────────────
 
@@ -285,11 +390,14 @@ else:
             prefix    = clone.get("db_prefix", "?")
             started   = clone.get("started_at")
             start_str = started.strftime("%d %b %Y  %H:%M UTC") if started else "unknown"
+
+            uc, gc = await _count_clone_collections(prefix)
+
             status_text = (
                 f"✅ <b>Bot Running</b>\n"
                 f"🤖 {bot_un}\n"
-                f"🆔 PID: <code>{pid}</code>\n"
-                f"📦 DB: <code>{prefix}*</code>\n"
+                f"🆔 PID: <code>{pid}</code>  •  📦 DB: <code>{prefix}*</code>\n"
+                f"👥 Users: <b>{uc:,}</b>  •  🏟 Groups: <b>{gc:,}</b>\n"
                 f"🕐 Started: {start_str}"
             )
             buttons = [[InlineKeyboardButton("🛑 Stop My Bot", callback_data="clone_stop_confirm")]]
@@ -367,9 +475,8 @@ else:
             "<b>Step 5 — Add to Group</b>\n"
             "Add your bot to your tournament group and play! 🏏\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            "✅ Stats are <b>100% separate</b> — your users, groups,\n"
-            "and match history are fully isolated.\n"
-            "♻️ Restart anytime with the same token — stats recover!\n"
+            "✅ Stats are <b>100% separate</b> from all other bots.\n"
+            "♻️ Restart anytime — stats recover from the same token!\n"
             "⏱ Runs for <b>28 days</b> then auto-stops.",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[
@@ -414,7 +521,7 @@ else:
                 f"📅 Expires: <b>{exp}</b>\n\n"
                 f"Use <code>/clone &lt;bot_token&gt;</code> in DM to start your bot.\n"
                 f"Get a token from @BotFather first.\n\n"
-                f"📊 Your bot will have <b>completely separate stats</b> from all other bots.\n"
+                f"📊 Your bot has <b>completely separate stats</b> from all other bots.\n"
                 f"♻️ Stats are saved — restarting the same bot preserves everything.",
                 parse_mode=ParseMode.HTML,
             )
@@ -450,62 +557,58 @@ else:
         except Exception:
             pass
 
-    # ── /clones ───────────────────────────────────────────────────────────────
+    # ── /clones (paginated) ───────────────────────────────────────────────────
 
     @Client.on_message(filters.command(["clones", "clonelist"]) & OWNER_FILTER)
     async def clones_cmd(client: Client, message: Message):
-        from datetime import datetime
         active = await get_all_active_clones()
-
         if not active:
             return await message.reply_text(
                 "🧬 <b>CLONE BOT STATS</b>\n\nℹ️ No active clone bots right now.",
                 parse_mode=ParseMode.HTML,
             )
 
-        total = len(active)
-        lines = [
-            f"🧬 <b>ACTIVE CLONES</b>  •  <b>{total}</b> running\n"
-            f"━━━━━━━━━━━━━━━━━━━━━"
-        ]
+        args = message.command
+        try:
+            page = int(args[1]) - 1
+        except (IndexError, ValueError):
+            page = 0
 
-        for i, entry in enumerate(active, 1):
-            uid    = entry["user_id"]
-            bot_un = entry.get("bot_username", "unknown")
-            pid    = entry.get("pid", "?")
-            prefix = entry.get("db_prefix", "?")
-            started = entry.get("started_at")
-            start_str = started.strftime("%d %b %Y") if started else "?"
-
-            prem = await get_clone_premium(uid)
-            exp  = prem.get("expires_at") if prem else None
-            if exp:
-                remaining = (exp - datetime.utcnow()).days
-                exp_str   = f"{exp.strftime('%d %b %Y')} ({remaining}d)"
-            else:
-                exp_str = "?"
-
-            try:
-                user      = await client.get_users(uid)
-                user_name = f"<a href='tg://user?id={uid}'>{user.first_name}</a>"
-            except Exception:
-                user_name = f"<code>{uid}</code>"
-
-            lines.append(
-                f"\n<b>{i}.</b> 🤖 {bot_un}\n"
-                f"   👤 Owner: {user_name} (<code>{uid}</code>)\n"
-                f"   🆔 PID: <code>{pid}</code>  •  📅 Since {start_str}\n"
-                f"   📦 DB: <code>{prefix}*</code>\n"
-                f"   ⏳ Expires: <b>{exp_str}</b>"
-            )
-
-        lines.append(f"\n━━━━━━━━━━━━━━━━━━━━━\n📊 Total: <b>{total}</b> clone(s) running")
-
+        wait = await message.reply_text("⏳ Fetching clone stats…")
+        text, kb = await _build_clones_page(client, active, page)
+        try:
+            await wait.delete()
+        except Exception:
+            pass
         await message.reply_text(
-            "\n".join(lines),
+            text,
             parse_mode=ParseMode.HTML,
             disable_web_page_preview=True,
+            reply_markup=kb,
         )
+
+    @Client.on_callback_query(filters.regex(r"^clones_pg_(\d+)$") & OWNER_FILTER)
+    async def clones_page_cb(client: Client, cb: CallbackQuery):
+        page   = int(cb.data.split("_")[-1])
+        active = await get_all_active_clones()
+        if not active:
+            return await cb.answer("No active clones.", show_alert=True)
+
+        await cb.answer("Loading…")
+        text, kb = await _build_clones_page(client, active, page)
+        try:
+            await cb.message.edit_text(
+                text,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True,
+                reply_markup=kb,
+            )
+        except Exception:
+            pass
+
+    @Client.on_callback_query(filters.regex(r"^clones_pg_noop$") & OWNER_FILTER)
+    async def clones_noop_cb(client: Client, cb: CallbackQuery):
+        await cb.answer("You're already viewing this page.")
 
     # ── /broadall ─────────────────────────────────────────────────────────────
 
@@ -570,9 +673,8 @@ else:
                 except Exception:
                     pass
 
-                if ok:
-                    success_bots += 1
-                else:
+                success_bots += 1 if ok else 0
+                if not ok:
                     fail_bots += 1
                 await asyncio.sleep(0.5)
 
@@ -587,7 +689,6 @@ else:
 
     @Client.on_message(filters.command("transferclone") & OWNER_FILTER)
     async def transferclone_cmd(client: Client, message: Message):
-        """Merge a clone bot's isolated DB collections into the main bot's collections."""
         args = message.command
         if len(args) < 2:
             return await message.reply_text(
@@ -600,7 +701,7 @@ else:
 
         from database.connection import db
 
-        target_raw = args[1].lstrip("@").lower()
+        target_raw  = args[1].lstrip("@").lower()
         clone_entry = await db.db["user_clones"].find_one(
             {"bot_username": {"$regex": f"^@?{target_raw}$", "$options": "i"}}
         )
@@ -612,23 +713,20 @@ else:
                 parse_mode=ParseMode.HTML,
             )
 
-        prefix = clone_entry.get("db_prefix") or _make_db_prefix(
+        prefix    = clone_entry.get("db_prefix") or _make_db_prefix(
             clone_entry.get("bot_username", target_raw)
         )
         owner_uid = clone_entry.get("user_id", "?")
-
-        status = await message.reply_text(
+        status    = await message.reply_text(
             f"🔄 Transferring from <code>{prefix}*</code>…",
             parse_mode=ParseMode.HTML,
         )
 
-        real_db = db.real_db  # always the actual Motor DB, even when called from clone context
-
+        real_db      = db.real_db
         users_added  = 0
         stats_merged = 0
         groups_added = 0
 
-        # ── Users ─────────────────────────────────────────────────────────────
         try:
             clone_users = await real_db[f"{prefix}users"].find({}).to_list(length=None)
             for u in clone_users:
@@ -639,7 +737,6 @@ else:
         except Exception as e:
             print(f"transferclone users error: {e}")
 
-        # ── User stats ────────────────────────────────────────────────────────
         try:
             clone_stats = await real_db[f"{prefix}user_stats"].find({}).to_list(length=None)
             for s in clone_stats:
@@ -654,22 +751,21 @@ else:
                     await real_db["user_stats"].update_one(
                         {"user_id": uid_s},
                         {"$inc": {
-                            "runs":       s.get("runs", 0),
-                            "wickets":    s.get("wickets", 0),
-                            "matches":    s.get("matches", 0),
-                            "fifties":    s.get("fifties", 0),
-                            "centuries":  s.get("centuries", 0),
-                            "sixes":      s.get("sixes", 0),
-                            "fours":      s.get("fours", 0),
-                            "wins":       s.get("wins", 0),
-                            "losses":     s.get("losses", 0),
+                            "runs":      s.get("runs", 0),
+                            "wickets":   s.get("wickets", 0),
+                            "matches":   s.get("matches", 0),
+                            "fifties":   s.get("fifties", 0),
+                            "centuries": s.get("centuries", 0),
+                            "sixes":     s.get("sixes", 0),
+                            "fours":     s.get("fours", 0),
+                            "wins":      s.get("wins", 0),
+                            "losses":    s.get("losses", 0),
                         }},
                     )
                 stats_merged += 1
         except Exception as e:
             print(f"transferclone stats error: {e}")
 
-        # ── Groups ────────────────────────────────────────────────────────────
         try:
             clone_groups = await real_db[f"{prefix}groups"].find({}).to_list(length=None)
             for g in clone_groups:
