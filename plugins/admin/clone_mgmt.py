@@ -7,10 +7,11 @@ User commands (DM only):
   /myclone         — check your clone status
 
 Owner commands:
-  /givecp <user_id>   — grant clone premium to a user
-  /revokecp <user_id> — revoke clone premium (also kills their bot)
-  /clones             — list all active clones with owner, stats & expiry
-  /broadall           — broadcast a message through ALL active clone bots
+  /givecp <user_id> [days]  — grant clone premium
+  /revokecp <user_id>       — revoke clone premium (also kills bot)
+  /clones                   — list all active clones with owner, stats & expiry
+  /broadall                 — broadcast via ALL active clone bots
+  /transferclone @username  — merge a clone's data into main bot DB
 """
 
 import os
@@ -45,8 +46,9 @@ if Config.IS_CLONE:
 else:
     OWNER_FILTER = filters.user(list(Config.OWNER_IDS))
 
-    def _is_owner(uid: int) -> bool:
-        return uid in Config.OWNER_IDS
+    def _make_db_prefix(bot_username: str) -> str:
+        """Compute deterministic collection prefix from bot username."""
+        return f"c_{bot_username.replace('@', '').lower()}_"
 
     async def _validate_token(token: str) -> dict | None:
         try:
@@ -59,40 +61,43 @@ else:
             pass
         return None
 
-    def _spawn_clone(user_id: int, token: str) -> subprocess.Popen:
+    def _spawn_clone(user_id: int, token: str, bot_username: str) -> subprocess.Popen:
+        prefix = _make_db_prefix(bot_username)
         env = os.environ.copy()
-        env["BOT_TOKEN"] = token
-        env["IS_CLONE"] = "1"
-        env["CLONE_OWNER_ID"] = str(user_id)
-        env["MAIN_BOT_USERNAME"] = Config.BOT_USERNAME
-        env["MAIN_SUPPORT"] = "https://t.me/clg_fun_zone"
+        env["BOT_TOKEN"]             = token
+        env["IS_CLONE"]              = "1"
+        env["CLONE_OWNER_ID"]        = str(user_id)
+        env["CLONE_DB_PREFIX"]       = prefix
+        env["MAIN_BOT_USERNAME"]     = Config.BOT_USERNAME
+        env["MAIN_SUPPORT"]          = "https://t.me/clg_fun_zone"
         env["MAIN_SUPPORT_USERNAME"] = "@clg_fun_zone"
-        proc = subprocess.Popen(
+        return subprocess.Popen(
             [sys.executable, "bot.py"],
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        return proc
 
     async def respawn_all_clones():
-        """Called on main bot startup — re-spawns any clones that were running."""
+        """Called on main bot startup — re-spawns all running clones."""
         try:
             active = await get_all_active_clones()
             if not active:
                 return
             print(f"🧬 Re-spawning {len(active)} clone(s)…")
             for entry in active:
-                uid = entry["user_id"]
+                uid   = entry["user_id"]
                 token = entry.get("token")
+                bot_un = entry.get("bot_username", "")
                 if not token:
                     continue
                 if not await is_clone_premium(uid):
                     await clear_clone_process(uid)
                     continue
                 try:
-                    proc = _spawn_clone(uid, token)
-                    await set_clone_process(uid, token, proc.pid, entry.get("bot_username", ""))
+                    proc = _spawn_clone(uid, token, bot_un)
+                    prefix = _make_db_prefix(bot_un)
+                    await set_clone_process(uid, token, proc.pid, bot_un, db_prefix=prefix)
                     print(f"🧬 Re-spawned clone for user {uid} (pid {proc.pid})")
                     await asyncio.sleep(1)
                 except Exception as e:
@@ -111,7 +116,7 @@ else:
             return await message.reply_text(
                 "🧬 <b>Clone Bot</b>\n\n"
                 "Usage: <code>/clone &lt;bot_token&gt;</code>\n\n"
-                "Get your bot token from @BotFather.\n\n"
+                "Get your token from @BotFather.\n\n"
                 "🔒 Requires <b>Clone Premium</b>",
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([[
@@ -131,6 +136,7 @@ else:
                     "⏱ Duration: <b>28 days</b>\n"
                     "🤖 Your own Telegram bot, same game engine\n"
                     "⚙️ Fully customisable via /panel\n"
+                    "📊 Completely separate stats & users\n"
                     "━━━━━━━━━━━━━━━━━━━━━\n\n"
                     "Contact the owner below to purchase 👇"
                 ),
@@ -150,7 +156,7 @@ else:
                 parse_mode=ParseMode.HTML,
             )
 
-        token = args[1].strip()
+        token  = args[1].strip()
         status = await message.reply_text("🔍 Validating token…")
 
         bot_info = await _validate_token(token)
@@ -162,31 +168,34 @@ else:
             )
 
         bot_username = f"@{bot_info.get('username', 'unknown')}"
-        bot_name = bot_info.get("first_name", "Bot")
+        bot_name     = bot_info.get("first_name", "Bot")
+        db_prefix    = _make_db_prefix(bot_username)
 
         await status.edit_text(
-            f"🚀 Starting <b>{bot_name}</b> ({bot_username})…",
+            f"🚀 Starting <b>{bot_name}</b> ({bot_username})…\n"
+            f"📦 Stats prefix: <code>{db_prefix}*</code>",
             parse_mode=ParseMode.HTML,
         )
 
         try:
-            proc = _spawn_clone(user.id, token)
+            proc = _spawn_clone(user.id, token, bot_username)
         except Exception as e:
             return await status.edit_text(
                 f"❌ Failed to start bot: <code>{e}</code>",
                 parse_mode=ParseMode.HTML,
             )
 
-        await set_clone_process(user.id, token, proc.pid, bot_username)
+        await set_clone_process(user.id, token, proc.pid, bot_username, db_prefix=db_prefix)
         await asyncio.sleep(2)
 
         await status.edit_text(
             f"✅ <b>Clone Bot Started!</b>\n\n"
             f"🤖 <b>Bot:</b> {bot_name} ({bot_username})\n"
-            f"🆔 <b>PID:</b> <code>{proc.pid}</code>\n\n"
+            f"🆔 <b>PID:</b> <code>{proc.pid}</code>\n"
+            f"📦 <b>DB prefix:</b> <code>{db_prefix}*</code>\n\n"
             f"💡 DM <b>{bot_username}</b> and send /panel to customise it.\n"
             f"🛑 Use /rmbot here to stop it.\n"
-            f"📊 Use /myclone to check status.",
+            f"📊 Stats are <b>fully isolated</b> from other bots.",
             parse_mode=ParseMode.HTML,
         )
 
@@ -197,6 +206,7 @@ else:
                 f"👤 Owner: <a href='tg://user?id={user.id}'>{user.first_name}</a> "
                 f"(<code>{user.id}</code>)\n"
                 f"🤖 Bot: {bot_username}\n"
+                f"📦 DB prefix: <code>{db_prefix}*</code>\n"
                 f"🆔 PID: <code>{proc.pid}</code>",
                 parse_mode=ParseMode.HTML,
             )
@@ -207,13 +217,13 @@ else:
 
     @Client.on_message(filters.command("rmbot") & filters.private)
     async def rmbot_cmd(client: Client, message: Message):
-        user = message.from_user
+        user  = message.from_user
         clone = await get_clone_process(user.id)
 
         if not clone or not clone.get("running"):
             return await message.reply_text("ℹ️ You don't have a running clone bot.")
 
-        pid = clone.get("pid")
+        pid          = clone.get("pid")
         bot_username = clone.get("bot_username", "your bot")
 
         if pid:
@@ -227,7 +237,7 @@ else:
         await message.reply_text(
             f"✅ <b>Clone bot stopped.</b>\n\n"
             f"🤖 {bot_username} has been shut down.\n"
-            f"You can start a new one anytime with /clone.",
+            f"📊 Your stats are saved and will resume when you restart with /clone.",
             parse_mode=ParseMode.HTML,
         )
 
@@ -247,8 +257,8 @@ else:
 
     @Client.on_message(filters.command("myclone") & filters.private)
     async def myclone_cmd(client: Client, message: Message):
-        user = message.from_user
-        prem = await get_clone_premium(user.id)
+        user  = message.from_user
+        prem  = await get_clone_premium(user.id)
         clone = await get_clone_process(user.id)
 
         if not prem or not prem.get("active"):
@@ -265,24 +275,26 @@ else:
         exp = prem.get("expires_at")
         if exp:
             remaining = (exp - datetime.utcnow()).days
-            exp_str = f"{exp.strftime('%d %b %Y')} ({remaining}d left)"
+            exp_str   = f"{exp.strftime('%d %b %Y')} ({remaining}d left)"
         else:
             exp_str = "Unknown"
 
         if clone and clone.get("running"):
-            bot_un = clone.get("bot_username", "unknown")
-            pid = clone.get("pid", "?")
-            started = clone.get("started_at")
-            started_str = started.strftime("%d %b %Y  %H:%M UTC") if started else "unknown"
+            bot_un    = clone.get("bot_username", "unknown")
+            pid       = clone.get("pid", "?")
+            prefix    = clone.get("db_prefix", "?")
+            started   = clone.get("started_at")
+            start_str = started.strftime("%d %b %Y  %H:%M UTC") if started else "unknown"
             status_text = (
                 f"✅ <b>Bot Running</b>\n"
                 f"🤖 {bot_un}\n"
                 f"🆔 PID: <code>{pid}</code>\n"
-                f"🕐 Started: {started_str}"
+                f"📦 DB: <code>{prefix}*</code>\n"
+                f"🕐 Started: {start_str}"
             )
             buttons = [[InlineKeyboardButton("🛑 Stop My Bot", callback_data="clone_stop_confirm")]]
         else:
-            status_text = "⛔ <b>No bot running</b>\n/clone &lt;token&gt; to start one."
+            status_text = "⛔ <b>No bot running</b>\nSend /clone &lt;token&gt; to start one."
             buttons = []
 
         await message.reply_text(
@@ -301,18 +313,16 @@ else:
         await cb.answer()
         await cb.message.reply_text(
             "⚠️ Are you sure you want to stop your clone bot?",
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("✅ Yes, Stop It", callback_data="clone_stop_do"),
-                    InlineKeyboardButton("❌ Cancel", callback_data="clone_stop_cancel"),
-                ]
-            ]),
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("✅ Yes, Stop It", callback_data="clone_stop_do"),
+                InlineKeyboardButton("❌ Cancel",       callback_data="clone_stop_cancel"),
+            ]]),
         )
 
     @Client.on_callback_query(filters.regex("^clone_stop_do$"))
     async def clone_stop_do_cb(client: Client, cb: CallbackQuery):
         await cb.answer()
-        user = cb.from_user
+        user  = cb.from_user
         clone = await get_clone_process(user.id)
         if clone and clone.get("pid"):
             try:
@@ -344,22 +354,23 @@ else:
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             "<b>Step 1 — Buy Premium</b>\n"
             "Contact @Spideyyye and pay ₹200/month.\n"
-            "Once paid, your account gets activated within minutes.\n\n"
+            "Activated within minutes after payment.\n\n"
             "<b>Step 2 — Create Your Bot</b>\n"
-            "Open @BotFather on Telegram.\n"
-            "Send /newbot → choose a name & username.\n"
+            "Open @BotFather → /newbot → pick a name & username.\n"
             "Copy the bot token.\n\n"
             "<b>Step 3 — Clone It</b>\n"
             "Come back here and send:\n"
-            "<code>/clone &lt;paste your token here&gt;</code>\n\n"
+            "<code>/clone &lt;your bot token here&gt;</code>\n\n"
             "<b>Step 4 — Customise</b>\n"
-            "DM your new bot and send /panel.\n"
-            "Set your own start image, message, support group and more — all via buttons.\n\n"
+            "DM your new bot → /panel → set start image, message,\n"
+            "support group and more — all via buttons.\n\n"
             "<b>Step 5 — Add to Group</b>\n"
             "Add your bot to your tournament group and play! 🏏\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            "⏱ Your bot runs for <b>28 days</b> then auto-stops.\n"
-            "Renew anytime by contacting @Spideyyye.",
+            "✅ Stats are <b>100% separate</b> — your users, groups,\n"
+            "and match history are fully isolated.\n"
+            "♻️ Restart anytime with the same token — stats recover!\n"
+            "⏱ Runs for <b>28 days</b> then auto-stops.",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("💬 Contact @Spideyyye", url="https://t.me/Spideyyye"),
@@ -373,13 +384,12 @@ else:
         args = message.command
         if len(args) < 2:
             return await message.reply_text(
-                "Usage: <code>/givecp &lt;user_id&gt; [days]</code>\n"
-                "Default: 28 days",
+                "Usage: <code>/givecp &lt;user_id&gt; [days]</code>\nDefault: 28 days",
                 parse_mode=ParseMode.HTML,
             )
         try:
             target = int(args[1])
-            days = int(args[2]) if len(args) >= 3 else 28
+            days   = int(args[2]) if len(args) >= 3 else 28
         except ValueError:
             return await message.reply_text("❌ Invalid user ID or days.")
 
@@ -402,9 +412,10 @@ else:
                 f"🎉 <b>Clone Premium Activated!</b>\n\n"
                 f"You now have Clone Premium for <b>{days} days</b>.\n"
                 f"📅 Expires: <b>{exp}</b>\n\n"
-                f"Use <code>/clone &lt;bot_token&gt;</code> in DM to start your clone bot.\n"
+                f"Use <code>/clone &lt;bot_token&gt;</code> in DM to start your bot.\n"
                 f"Get a token from @BotFather first.\n\n"
-                f"Send /clone to see the guide.",
+                f"📊 Your bot will have <b>completely separate stats</b> from all other bots.\n"
+                f"♻️ Stats are saved — restarting the same bot preserves everything.",
                 parse_mode=ParseMode.HTML,
             )
         except Exception:
@@ -427,7 +438,7 @@ else:
 
         await revoke_clone_premium(target)
         await message.reply_text(
-            f"✅ Clone premium revoked from <code>{target}</code>.\nTheir bot has been stopped.",
+            f"✅ Clone premium revoked from <code>{target}</code>. Their bot has been stopped.",
             parse_mode=ParseMode.HTML,
         )
         try:
@@ -448,8 +459,7 @@ else:
 
         if not active:
             return await message.reply_text(
-                "🧬 <b>CLONE BOT STATS</b>\n\n"
-                "ℹ️ No active clone bots right now.",
+                "🧬 <b>CLONE BOT STATS</b>\n\nℹ️ No active clone bots right now.",
                 parse_mode=ParseMode.HTML,
             )
 
@@ -460,22 +470,23 @@ else:
         ]
 
         for i, entry in enumerate(active, 1):
-            uid = entry["user_id"]
+            uid    = entry["user_id"]
             bot_un = entry.get("bot_username", "unknown")
-            pid = entry.get("pid", "?")
+            pid    = entry.get("pid", "?")
+            prefix = entry.get("db_prefix", "?")
             started = entry.get("started_at")
-            started_str = started.strftime("%d %b %Y") if started else "?"
+            start_str = started.strftime("%d %b %Y") if started else "?"
 
             prem = await get_clone_premium(uid)
-            exp = prem.get("expires_at") if prem else None
+            exp  = prem.get("expires_at") if prem else None
             if exp:
                 remaining = (exp - datetime.utcnow()).days
-                exp_str = f"{exp.strftime('%d %b %Y')} ({remaining}d)"
+                exp_str   = f"{exp.strftime('%d %b %Y')} ({remaining}d)"
             else:
                 exp_str = "?"
 
             try:
-                user = await client.get_users(uid)
+                user      = await client.get_users(uid)
                 user_name = f"<a href='tg://user?id={uid}'>{user.first_name}</a>"
             except Exception:
                 user_name = f"<code>{uid}</code>"
@@ -483,7 +494,8 @@ else:
             lines.append(
                 f"\n<b>{i}.</b> 🤖 {bot_un}\n"
                 f"   👤 Owner: {user_name} (<code>{uid}</code>)\n"
-                f"   🆔 PID: <code>{pid}</code>  •  📅 Since {started_str}\n"
+                f"   🆔 PID: <code>{pid}</code>  •  📅 Since {start_str}\n"
+                f"   📦 DB: <code>{prefix}*</code>\n"
                 f"   ⏳ Expires: <b>{exp_str}</b>"
             )
 
@@ -499,14 +511,11 @@ else:
 
     @Client.on_message(filters.command("broadall") & OWNER_FILTER)
     async def broadall_cmd(client: Client, message: Message):
-        """Broadcast a message via ALL active clone bots to their owners & groups."""
         if not message.reply_to_message:
             return await message.reply_text(
                 "📡 <b>Broadcast via All Clone Bots</b>\n\n"
-                "Reply to a message with /broadall to broadcast it through every active clone bot.\n\n"
-                "The message will be sent by each clone bot to:\n"
-                "• The clone owner's DM\n"
-                "• All groups in the shared database",
+                "Reply to a message with /broadall to send it through every active clone bot\n"
+                "→ clone owner DMs + all groups in DB.",
                 parse_mode=ParseMode.HTML,
             )
 
@@ -514,18 +523,17 @@ else:
         if not active:
             return await message.reply_text("ℹ️ No active clone bots to broadcast through.")
 
-        status = await message.reply_text(
+        status   = await message.reply_text(
             f"📡 Broadcasting through <b>{len(active)}</b> clone bot(s)…",
             parse_mode=ParseMode.HTML,
         )
-
         src_chat = message.reply_to_message.chat.id
         src_msg  = message.reply_to_message.id
 
         from database.groups import get_all_groups
 
         success_bots = 0
-        fail_bots = 0
+        fail_bots    = 0
 
         async with httpx.AsyncClient(timeout=20) as http:
             for entry in active:
@@ -535,21 +543,15 @@ else:
                     fail_bots += 1
                     continue
 
-                bot_success = 0
-                bot_fail = 0
-
+                ok = False
                 try:
                     await http.post(
                         f"https://api.telegram.org/bot{token}/forwardMessage",
-                        json={
-                            "chat_id": uid,
-                            "from_chat_id": src_chat,
-                            "message_id": src_msg,
-                        },
+                        json={"chat_id": uid, "from_chat_id": src_chat, "message_id": src_msg},
                     )
-                    bot_success += 1
+                    ok = True
                 except Exception:
-                    bot_fail += 1
+                    pass
 
                 try:
                     groups = await get_all_groups()
@@ -560,29 +562,130 @@ else:
                         try:
                             await http.post(
                                 f"https://api.telegram.org/bot{token}/forwardMessage",
-                                json={
-                                    "chat_id": gid,
-                                    "from_chat_id": src_chat,
-                                    "message_id": src_msg,
-                                },
+                                json={"chat_id": gid, "from_chat_id": src_chat, "message_id": src_msg},
                             )
-                            bot_success += 1
                         except Exception:
-                            bot_fail += 1
+                            pass
                         await asyncio.sleep(0.05)
                 except Exception:
                     pass
 
-                if bot_success:
+                if ok:
                     success_bots += 1
                 else:
                     fail_bots += 1
-
                 await asyncio.sleep(0.5)
 
         await status.edit_text(
             f"✅ <b>Broadall Complete</b>\n\n"
-            f"📡 Bots used: <b>{success_bots}</b> succeeded, <b>{fail_bots}</b> failed\n"
-            f"🔢 Total clone bots: <b>{len(active)}</b>",
+            f"📡 Bots succeeded: <b>{success_bots}</b> / {len(active)}\n"
+            f"❌ Failed: <b>{fail_bots}</b>",
+            parse_mode=ParseMode.HTML,
+        )
+
+    # ── /transferclone ────────────────────────────────────────────────────────
+
+    @Client.on_message(filters.command("transferclone") & OWNER_FILTER)
+    async def transferclone_cmd(client: Client, message: Message):
+        """Merge a clone bot's isolated DB collections into the main bot's collections."""
+        args = message.command
+        if len(args) < 2:
+            return await message.reply_text(
+                "📦 <b>Transfer Clone Data → Main Bot</b>\n\n"
+                "Usage: <code>/transferclone @botusername</code>\n\n"
+                "Merges users and stats from the clone into the main bot DB.\n"
+                "Existing user stats are <b>added</b> (not overwritten).",
+                parse_mode=ParseMode.HTML,
+            )
+
+        from database.connection import db
+
+        target_raw = args[1].lstrip("@").lower()
+        clone_entry = await db.db["user_clones"].find_one(
+            {"bot_username": {"$regex": f"^@?{target_raw}$", "$options": "i"}}
+        )
+
+        if not clone_entry:
+            return await message.reply_text(
+                f"❌ No clone record found for @{target_raw}.\n\n"
+                f"Use /clones to see all known clone bots.",
+                parse_mode=ParseMode.HTML,
+            )
+
+        prefix = clone_entry.get("db_prefix") or _make_db_prefix(
+            clone_entry.get("bot_username", target_raw)
+        )
+        owner_uid = clone_entry.get("user_id", "?")
+
+        status = await message.reply_text(
+            f"🔄 Transferring from <code>{prefix}*</code>…",
+            parse_mode=ParseMode.HTML,
+        )
+
+        real_db = db.real_db  # always the actual Motor DB, even when called from clone context
+
+        users_added  = 0
+        stats_merged = 0
+        groups_added = 0
+
+        # ── Users ─────────────────────────────────────────────────────────────
+        try:
+            clone_users = await real_db[f"{prefix}users"].find({}).to_list(length=None)
+            for u in clone_users:
+                u.pop("_id", None)
+                if not await real_db["users"].find_one({"user_id": u["user_id"]}):
+                    await real_db["users"].insert_one(u)
+                    users_added += 1
+        except Exception as e:
+            print(f"transferclone users error: {e}")
+
+        # ── User stats ────────────────────────────────────────────────────────
+        try:
+            clone_stats = await real_db[f"{prefix}user_stats"].find({}).to_list(length=None)
+            for s in clone_stats:
+                s.pop("_id", None)
+                uid_s = s.get("user_id")
+                if not uid_s:
+                    continue
+                existing = await real_db["user_stats"].find_one({"user_id": uid_s})
+                if not existing:
+                    await real_db["user_stats"].insert_one(s)
+                else:
+                    await real_db["user_stats"].update_one(
+                        {"user_id": uid_s},
+                        {"$inc": {
+                            "runs":       s.get("runs", 0),
+                            "wickets":    s.get("wickets", 0),
+                            "matches":    s.get("matches", 0),
+                            "fifties":    s.get("fifties", 0),
+                            "centuries":  s.get("centuries", 0),
+                            "sixes":      s.get("sixes", 0),
+                            "fours":      s.get("fours", 0),
+                            "wins":       s.get("wins", 0),
+                            "losses":     s.get("losses", 0),
+                        }},
+                    )
+                stats_merged += 1
+        except Exception as e:
+            print(f"transferclone stats error: {e}")
+
+        # ── Groups ────────────────────────────────────────────────────────────
+        try:
+            clone_groups = await real_db[f"{prefix}groups"].find({}).to_list(length=None)
+            for g in clone_groups:
+                g.pop("_id", None)
+                if not await real_db["groups"].find_one({"chat_id": g["chat_id"]}):
+                    await real_db["groups"].insert_one(g)
+                    groups_added += 1
+        except Exception as e:
+            print(f"transferclone groups error: {e}")
+
+        await status.edit_text(
+            f"✅ <b>Transfer Complete</b>\n\n"
+            f"📦 Source: @{target_raw}  (prefix <code>{prefix}*</code>)\n"
+            f"👤 Clone owner: <code>{owner_uid}</code>\n\n"
+            f"👥 New users added: <b>{users_added}</b>\n"
+            f"📊 Stats merged: <b>{stats_merged}</b>\n"
+            f"🏟 Groups added: <b>{groups_added}</b>",
             parse_mode=ParseMode.HTML,
         )

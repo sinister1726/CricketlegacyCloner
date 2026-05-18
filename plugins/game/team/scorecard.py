@@ -391,41 +391,6 @@ async def save_match_stats(match, winner_team):
                 {"$max": {"best_partnership": partnership_runs}}
             )
 
-    try:
-        from database.venue_stats import update_venue_stats
-        chat_id    = match.get("chat_id")
-        chat_title = (
-            match.get("chat_title")
-            or match.get("group_name")
-            or match.get("title")
-            or match.get("group_title")
-        )
-        if chat_id and not chat_title:
-            try:
-                _chat = await match["client"].get_chat(chat_id)
-                chat_title = _chat.title or f"Group {chat_id}"
-            except Exception:
-                chat_title = f"Group {chat_id}"
-        if chat_id:
-            for uid, p in players.items():
-                p_runs = p.get("runs", 0)
-                await update_venue_stats(
-                    uid,
-                    chat_id,
-                    chat_title,
-                    p_runs,
-                    p.get("wickets", 0),
-                    fifties=1 if 50 <= p_runs < 100 else 0,
-                    centuries=1 if p_runs >= 100 else 0,
-                    balls_faced=p.get("balls_faced", 0),
-                )
-    except Exception as _ve:
-        print(f"Venue stats save error: {_ve}")
-
-    try:
-        from database.group_records import update_group_records
-        await update_group_records(match, players, winner_team)
-    except Exception as _gr:
-        print(f"Group records update error: {_gr}")
+    # Venue stats and group records are disabled.
 
     print(f"✅ Match {game_id} full stats and milestones saved.")

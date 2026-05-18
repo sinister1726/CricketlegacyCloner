@@ -1,9 +1,11 @@
 import random
+from datetime import datetime
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import Config
 from database.users import add_user, total_users
+from database.groups import total_groups
 
 PLAYZONE_LINK = "https://t.me/CLG_fun_zone"
 SUPPORT_LINK  = "https://t.me/Legacynewzz"
@@ -20,6 +22,58 @@ CLONE_MOODS = [
     "⚡ 𝗬𝗼𝘂𝗿 𝗰𝗿𝗶𝗰𝗸𝗲𝘁 𝗯𝗼𝘁 𝗶𝘀 𝗿𝗲𝗮𝗱𝘆!",
 ]
 
+# Template variables available in custom start messages:
+# {name}         → user's first name
+# {mention}      → HTML mention of the user
+# {username}     → @username  (or first name if no username)
+# {id}           → user's Telegram ID
+# {bot_name}     → this bot's display name
+# {bot_username} → this bot's @username
+# {users_count}  → total registered users in this bot
+# {groups_count} → total registered groups in this bot
+# {date}         → today's date  e.g. "18 May 2026"
+# {time}         → current UTC time  e.g. "14:30"
+
+
+async def _fill_template(text: str, user, me=None) -> str:
+    """Replace all supported template vars in a custom start message."""
+    if "{" not in text:
+        return text
+
+    mention  = f"<a href='tg://user?id={user.id}'>{user.first_name}</a>"
+    username = f"@{user.username}" if user.username else user.first_name
+
+    bot_name     = me.first_name if me else "Cricket Bot"
+    bot_username = f"@{me.username}" if (me and me.username) else ""
+
+    uc = gc = "?"
+    try:
+        uc = str(await total_users())
+    except Exception:
+        pass
+    try:
+        gc = str(await total_groups())
+    except Exception:
+        pass
+
+    now  = datetime.utcnow()
+    date = now.strftime("%d %b %Y")
+    time = now.strftime("%H:%M")
+
+    return (
+        text
+        .replace("{name}",         user.first_name)
+        .replace("{mention}",      mention)
+        .replace("{username}",     username)
+        .replace("{id}",           str(user.id))
+        .replace("{bot_name}",     bot_name)
+        .replace("{bot_username}", bot_username)
+        .replace("{users_count}",  uc)
+        .replace("{groups_count}", gc)
+        .replace("{date}",         date)
+        .replace("{time}",         time)
+    )
+
 
 async def _get_clone_start_config(owner_id: int) -> dict:
     try:
@@ -31,7 +85,7 @@ async def _get_clone_start_config(owner_id: int) -> dict:
 
 @Client.on_message(filters.command("start") & filters.private)
 async def start_cmd(client: Client, message):
-    user = message.from_user
+    user       = message.from_user
     first_name = user.first_name or "Captain"
 
     is_new = await add_user(user.id, first_name)
@@ -42,6 +96,11 @@ async def start_cmd(client: Client, message):
         text, buttons = get_duel_matchmaking_card()
         await message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=buttons)
         return
+
+    try:
+        me = await client.get_me()
+    except Exception:
+        me = None
 
     # ── CLONE BOT START ───────────────────────────────────────────────────────
     if Config.IS_CLONE and Config.CLONE_OWNER_ID:
@@ -54,7 +113,7 @@ async def start_cmd(client: Client, message):
         mood          = random.choice(CLONE_MOODS)
 
         if custom_text:
-            caption = custom_text.replace("{name}", first_name)
+            caption = await _fill_template(custom_text, user, me)
         else:
             caption = (
                 f"{mood}\n"
@@ -68,11 +127,7 @@ async def start_cmd(client: Client, message):
                 "👇 Use the buttons below to get started"
             )
 
-        try:
-            me = await client.get_me()
-            add_btn_username = me.username or ""
-        except Exception:
-            add_btn_username = ""
+        add_btn_username = me.username if me else ""
 
         buttons = InlineKeyboardMarkup([
             [
@@ -107,6 +162,7 @@ async def start_cmd(client: Client, message):
             "👇 Use the buttons below"
         )
 
+        bot_un = me.username if me else (Config.BOT_USERNAME.replace("@", ""))
         buttons = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("ʟᴇɢᴀᴄʏ ᴘʟᴀʏᴢᴏɴᴇ 🏏", url=PLAYZONE_LINK),
@@ -115,7 +171,7 @@ async def start_cmd(client: Client, message):
             [
                 InlineKeyboardButton(
                     "➕ ᴀᴅᴅ ᴛᴏ ɢʀᴏᴜᴘ",
-                    url=f"https://t.me/{Config.BOT_USERNAME.replace('@','')}?startgroup=true",
+                    url=f"https://t.me/{bot_un}?startgroup=true",
                 ),
             ],
             [
@@ -152,7 +208,8 @@ async def start_cmd(client: Client, message):
                         )
                     except Exception:
                         pass
-            await client.send_message(Config.LOG_CHANNEL, log_text, parse_mode=ParseMode.HTML)
+            else:
+                await client.send_message(Config.LOG_CHANNEL, log_text, parse_mode=ParseMode.HTML)
         except Exception:
             pass
 
