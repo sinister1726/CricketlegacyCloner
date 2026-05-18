@@ -6,7 +6,7 @@ from config import Config
 from database.users import add_user, total_users
 
 PLAYZONE_LINK = "https://t.me/CLG_fun_zone"
-SUPPORT_LINK = "https://t.me/Legacynewzz"
+SUPPORT_LINK  = "https://t.me/Legacynewzz"
 
 START_MOODS = [
     "🏏 𝗪𝗲𝗹𝗰𝗼𝗺𝗲, 𝗖𝗮𝗽𝘁𝗮𝗶𝗻!",
@@ -14,9 +14,14 @@ START_MOODS = [
     "🔥 𝗧𝗵𝗲 𝗽𝗶𝘁𝗰𝗵 𝗶𝘀 𝘀𝗲𝘁. 𝗟𝗲𝘁'𝘀 𝗽𝗹𝗮𝘆!",
 ]
 
+CLONE_MOODS = [
+    "🏏 𝗪𝗲𝗹𝗰𝗼𝗺𝗲 𝘁𝗼 𝘆𝗼𝘂𝗿 𝗖𝗿𝗶𝗰𝗸𝗲𝘁 𝗮𝗿𝗲𝗻𝗮!",
+    "🔥 𝗟𝗲𝘁 𝘁𝗵𝗲 𝗴𝗮𝗺𝗲 𝗯𝗲𝗴𝗶𝗻!",
+    "⚡ 𝗬𝗼𝘂𝗿 𝗰𝗿𝗶𝗰𝗸𝗲𝘁 𝗯𝗼𝘁 𝗶𝘀 𝗿𝗲𝗮𝗱𝘆!",
+]
+
 
 async def _get_clone_start_config(owner_id: int) -> dict:
-    """Fetch custom start settings for a clone bot."""
     try:
         from database.clone import get_all_clone_settings
         return await get_all_clone_settings(owner_id)
@@ -38,14 +43,15 @@ async def start_cmd(client: Client, message):
         await message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=buttons)
         return
 
-    mood = random.choice(START_MOODS)
-
+    # ── CLONE BOT START ───────────────────────────────────────────────────────
     if Config.IS_CLONE and Config.CLONE_OWNER_ID:
         s = await _get_clone_start_config(Config.CLONE_OWNER_ID)
+
         start_image   = s.get("start_image")   or Config.START_IMAGE
         support_link  = s.get("support_link")  or Config.MAIN_SUPPORT
         playzone_link = s.get("playzone_link") or PLAYZONE_LINK
         custom_text   = s.get("start_text")
+        mood          = random.choice(CLONE_MOODS)
 
         if custom_text:
             caption = custom_text.replace("{name}", first_name)
@@ -54,29 +60,38 @@ async def start_cmd(client: Client, message):
                 f"{mood}\n"
                 "────┈┄┄╌╌╌╌┄┄┈────\n\n"
                 f"👤 <b>{first_name}</b>, welcome! 🏏\n\n"
+                f"🧬 <b>Clone of {Config.MAIN_BOT_USERNAME}</b>\n"
+                "For your tournament and group\n\n"
                 "🎮 Play epic team & solo matches\n"
                 "⚔️ Challenge rivals in 1v1 Duel\n"
-                "📊 Track stats & achievements\n\n"
-                f"🧬 <i>Powered by {Config.MAIN_BOT_USERNAME}</i>\n\n"
-                "👇 Use the buttons below"
+                "📊 Track your stats & achievements\n\n"
+                "👇 Use the buttons below to get started"
             )
+
+        try:
+            me = await client.get_me()
+            add_btn_username = me.username or ""
+        except Exception:
+            add_btn_username = ""
 
         buttons = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("🏏 PlayZone", url=playzone_link),
-                InlineKeyboardButton("🆘 Support",  url=support_link),
+                InlineKeyboardButton("🏏 Play Zone",  url=playzone_link),
+                InlineKeyboardButton("🆘 Support",    url=support_link),
             ],
             [
                 InlineKeyboardButton(
                     "➕ Add to Group",
-                    url=f"https://t.me/{Config.BOT_USERNAME.replace('@', '')}?startgroup=true"
-                )
+                    url=f"https://t.me/{add_btn_username}?startgroup=true",
+                ) if add_btn_username else
+                InlineKeyboardButton("➕ Add to Group", url=playzone_link),
             ],
         ])
+
+    # ── MAIN BOT START ────────────────────────────────────────────────────────
     else:
-        start_image   = Config.START_IMAGE
-        support_link  = SUPPORT_LINK
-        playzone_link = PLAYZONE_LINK
+        start_image = Config.START_IMAGE
+        mood        = random.choice(START_MOODS)
 
         caption = (
             f"{mood}\n"
@@ -87,18 +102,24 @@ async def start_cmd(client: Client, message):
             "⚔️ Challenge rivals in 1v1 Duel\n"
             "📊 Track stats & achievements\n"
             "🎙 Live match vibes & action\n\n"
-            "🐞 Found a bug?\n"
-            "Report it in <b>PlayZone</b>\n\n"
+            "🧬 <b>Want your own cricket bot?</b>\n"
+            "Clone this bot for your group or tournament!\n\n"
             "👇 Use the buttons below"
         )
 
         buttons = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("ʟᴇɢᴀᴄʏ ᴘʟᴀʏᴢᴏɴᴇ 🏏", url=PLAYZONE_LINK),
-                InlineKeyboardButton("🆘 ꜱᴜᴘᴘᴏʀᴛ", url=SUPPORT_LINK),
+                InlineKeyboardButton("🆘 ꜱᴜᴘᴘᴏʀᴛ",         url=SUPPORT_LINK),
             ],
             [
-                InlineKeyboardButton("➕ ᴀᴅᴅ ᴛᴏ ɢʀᴏᴜᴘ", url=f"https://t.me/{Config.BOT_USERNAME.replace('@','')}?startgroup=true")
+                InlineKeyboardButton(
+                    "➕ ᴀᴅᴅ ᴛᴏ ɢʀᴏᴜᴘ",
+                    url=f"https://t.me/{Config.BOT_USERNAME.replace('@','')}?startgroup=true",
+                ),
+            ],
+            [
+                InlineKeyboardButton("🧬 Get Your Clone Bot", callback_data="howclone"),
             ],
         ])
 
@@ -107,7 +128,7 @@ async def start_cmd(client: Client, message):
             photo=start_image,
             caption=caption,
             parse_mode=ParseMode.HTML,
-            reply_markup=buttons
+            reply_markup=buttons,
         )
     except Exception:
         await message.reply_text(caption, parse_mode=ParseMode.HTML, reply_markup=buttons)
@@ -126,12 +147,15 @@ async def start_cmd(client: Client, message):
                 log_ch = s.get("log_channel")
                 if log_ch:
                     try:
-                        await client.send_message(int(log_ch), log_text, parse_mode=ParseMode.HTML)
+                        await client.send_message(
+                            int(log_ch), log_text, parse_mode=ParseMode.HTML
+                        )
                     except Exception:
                         pass
             await client.send_message(Config.LOG_CHANNEL, log_text, parse_mode=ParseMode.HTML)
         except Exception:
             pass
+
 
 @Client.on_message(filters.private & filters.text & ~filters.regex(r"^/"), group=1)
 async def auto_register_user(client: Client, message):

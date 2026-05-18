@@ -6,7 +6,7 @@ Only loaded when IS_CLONE=True.
 
 from config import Config
 
-if not Config.IS_CLONE:
+if not Config.IS_CLONE or not Config.CLONE_OWNER_ID:
     pass
 else:
     from pyrogram import Client, filters
@@ -31,11 +31,39 @@ else:
     }
 
     SETTING_PROMPTS = {
-        "start_image":   "Send me the <b>image URL</b> for the start photo:\n\n<i>Example: https://graph.org/file/...</i>",
-        "start_text":    "Send me the <b>start message text</b>.\nYou can use HTML formatting.\n\n<i>Keep it under 1000 characters.</i>",
-        "support_link":  "Send me the <b>support group link</b>:\n\n<i>Example: https://t.me/yourgroup</i>",
-        "playzone_link": "Send me the <b>PlayZone / main group link</b>:\n\n<i>Example: https://t.me/yourplayzone</i>",
-        "log_channel":   "Send me the <b>log channel ID</b> (must be a number):\n\n<i>Example: -1001234567890</i>\n\nThe bot must be an admin in that channel.",
+        "start_image": (
+            "🖼 <b>Start Image URL</b>\n\n"
+            "Send the direct image URL for your bot's /start photo.\n\n"
+            "<i>Example: https://graph.org/file/abc123.jpg</i>\n\n"
+            "Send /cancel to abort."
+        ),
+        "start_text": (
+            "📝 <b>Start Message</b>\n\n"
+            "Send your custom start message text.\n"
+            "HTML formatting is supported.\n"
+            "Use <code>{name}</code> to include the user's first name.\n\n"
+            "<i>Keep it under 1000 characters.</i>\n\n"
+            "Send /cancel to abort."
+        ),
+        "support_link": (
+            "🔗 <b>Support Group Link</b>\n\n"
+            "Send your support group invite link.\n\n"
+            "<i>Example: https://t.me/yourgroup</i>\n\n"
+            "Send /cancel to abort."
+        ),
+        "playzone_link": (
+            "🎮 <b>PlayZone / Main Group Link</b>\n\n"
+            "Send your main cricket group link.\n\n"
+            "<i>Example: https://t.me/yourplayzone</i>\n\n"
+            "Send /cancel to abort."
+        ),
+        "log_channel": (
+            "📢 <b>Log Channel ID</b>\n\n"
+            "Send the chat ID of your log channel (must be a number).\n"
+            "The bot must be an admin in that channel.\n\n"
+            "<i>Example: -1001234567890</i>\n\n"
+            "Send /cancel to abort."
+        ),
     }
 
     def _panel_kb() -> InlineKeyboardMarkup:
@@ -52,46 +80,67 @@ else:
                 InlineKeyboardButton("📢 Log Channel",    callback_data="cp_set_log_channel"),
             ],
             [
-                InlineKeyboardButton("📋 View Settings",  callback_data="cp_view"),
-                InlineKeyboardButton("✖ Close",           callback_data="cp_close"),
+                InlineKeyboardButton("📋 View Current Settings", callback_data="cp_view"),
+            ],
+            [
+                InlineKeyboardButton("✖ Close Panel",    callback_data="cp_close"),
             ],
         ])
 
-    def _panel_text() -> str:
+    def _panel_caption(bot_username: str = "", owner_name: str = "") -> str:
         return (
-            "⚙️ <b>CLONE BOT PANEL</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "Tap a button to change that setting.\n"
-            "The bot will ask you to send the new value.\n\n"
-            "🖼 <b>Start Image</b> — photo shown on /start\n"
-            "📝 <b>Start Message</b> — text shown on /start\n"
-            "🔗 <b>Support Link</b> — your support group\n"
-            "🎮 <b>PlayZone Link</b> — your main play group\n"
-            "📢 <b>Log Channel</b> — where bot logs go\n"
-            "━━━━━━━━━━━━━━━━━━━━━"
+            f"⚙️ <b>CLONE BOT PANEL</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🤖 <b>Bot:</b> {bot_username or 'Your Clone'}\n"
+            f"👤 <b>Owner:</b> {owner_name or 'You'}\n\n"
+            f"Tap a button below to update that setting.\n"
+            f"The bot will ask you to send the new value.\n\n"
+            f"🖼 <b>Start Image</b> — photo on /start\n"
+            f"📝 <b>Start Message</b> — text on /start\n"
+            f"🔗 <b>Support Link</b> — your support group\n"
+            f"🎮 <b>PlayZone Link</b> — your main group\n"
+            f"📢 <b>Log Channel</b> — where logs go\n"
+            f"━━━━━━━━━━━━━━━━━━━━━"
         )
 
     @Client.on_message(filters.command("panel") & filters.private & filters.user(_OWNER))
     async def panel_cmd(client: Client, message: Message):
         _awaiting.pop(_OWNER, None)
-        await message.reply_text(
-            _panel_text(),
-            parse_mode=ParseMode.HTML,
-            reply_markup=_panel_kb(),
-        )
+
+        try:
+            me = await client.get_me()
+            bot_username = f"@{me.username}" if me.username else ""
+            try:
+                owner = await client.get_users(_OWNER)
+                owner_name = owner.first_name or str(_OWNER)
+            except Exception:
+                owner_name = str(_OWNER)
+
+            from utils.panel_image import generate_panel_image
+            img_buf = generate_panel_image(bot_username=bot_username, owner_name=owner_name)
+
+            await message.reply_photo(
+                photo=img_buf,
+                caption=_panel_caption(bot_username, owner_name),
+                parse_mode=ParseMode.HTML,
+                reply_markup=_panel_kb(),
+            )
+        except Exception:
+            await message.reply_text(
+                _panel_caption(),
+                parse_mode=ParseMode.HTML,
+                reply_markup=_panel_kb(),
+            )
 
     @Client.on_callback_query(filters.regex(r"^cp_set_\w+$") & filters.user(_OWNER))
     async def panel_set_cb(client: Client, cb: CallbackQuery):
         key = cb.data[len("cp_set_"):]
         if key not in SETTING_PROMPTS:
             return await cb.answer("Unknown setting.", show_alert=True)
-
         _awaiting[_OWNER] = key
         await cb.answer()
         await cb.message.reply_text(
-            f"✏️ <b>{SETTING_LABELS[key]}</b>\n\n"
-            + SETTING_PROMPTS[key]
-            + "\n\n<i>Send /cancel to abort.</i>",
+            SETTING_PROMPTS[key],
             parse_mode=ParseMode.HTML,
         )
 
@@ -101,16 +150,16 @@ else:
         s = await get_all_clone_settings(_OWNER)
         lines = ["📋 <b>CURRENT CLONE SETTINGS</b>\n━━━━━━━━━━━━━━━━━━━━━"]
         for key, label in SETTING_LABELS.items():
-            val = s.get(key, "<i>not set — using default</i>")
-            if key == "start_text" and val != "<i>not set — using default</i>":
-                val = val[:60] + "…" if len(str(val)) > 60 else val
-            lines.append(f"{label}:\n<code>{val}</code>")
-        lines.append("━━━━━━━━━━━━━━━━━━━━━")
+            val = s.get(key, "<i>not set (using default)</i>")
+            if key == "start_text" and isinstance(val, str) and len(val) > 60:
+                val = val[:60] + "…"
+            lines.append(f"\n{label}:\n<code>{val}</code>")
+        lines.append("\n━━━━━━━━━━━━━━━━━━━━━")
         await cb.message.reply_text(
-            "\n\n".join(lines),
+            "\n".join(lines),
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔙 Back to Panel", callback_data="cp_back")
+                InlineKeyboardButton("🔙 Back to Panel", callback_data="cp_back"),
             ]]),
         )
 
@@ -118,17 +167,36 @@ else:
     async def panel_back_cb(client: Client, cb: CallbackQuery):
         await cb.answer()
         try:
-            await cb.message.edit_text(
-                _panel_text(),
+            me = await client.get_me()
+            bot_username = f"@{me.username}" if me.username else ""
+            try:
+                owner = await client.get_users(_OWNER)
+                owner_name = owner.first_name or str(_OWNER)
+            except Exception:
+                owner_name = str(_OWNER)
+
+            from utils.panel_image import generate_panel_image
+            img_buf = generate_panel_image(bot_username=bot_username, owner_name=owner_name)
+
+            try:
+                await cb.message.delete()
+            except Exception:
+                pass
+            await cb.message.reply_photo(
+                photo=img_buf,
+                caption=_panel_caption(bot_username, owner_name),
                 parse_mode=ParseMode.HTML,
                 reply_markup=_panel_kb(),
             )
         except Exception:
-            await cb.message.reply_text(
-                _panel_text(),
-                parse_mode=ParseMode.HTML,
-                reply_markup=_panel_kb(),
-            )
+            try:
+                await cb.message.edit_text(
+                    _panel_caption(),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=_panel_kb(),
+                )
+            except Exception:
+                pass
 
     @Client.on_callback_query(filters.regex(r"^cp_close$") & filters.user(_OWNER))
     async def panel_close_cb(client: Client, cb: CallbackQuery):
@@ -136,8 +204,8 @@ else:
         try:
             await cb.message.delete()
         except Exception:
-            await cb.message.edit_text("✖ Panel closed.")
-        await cb.answer()
+            await cb.message.edit_caption("✖ Panel closed.")
+        await cb.answer("Panel closed.")
 
     @Client.on_message(
         filters.private & filters.user(_OWNER) & ~filters.command(["panel", "start", "help"]),
@@ -151,7 +219,10 @@ else:
         text = (message.text or "").strip()
 
         if text.lower() == "/cancel":
-            return await message.reply_text("❌ Cancelled. No changes made.")
+            return await message.reply_text(
+                "❌ Cancelled. No changes made.",
+                reply_markup=_panel_kb(),
+            )
 
         if not text:
             _awaiting[_OWNER] = key
@@ -163,12 +234,12 @@ else:
             except ValueError:
                 _awaiting[_OWNER] = key
                 return await message.reply_text(
-                    "❌ Log channel must be a <b>number</b> (e.g. <code>-1001234567890</code>).\n"
+                    "❌ Log channel must be a number (e.g. <code>-1001234567890</code>).\n"
                     "Try again or send /cancel.",
                     parse_mode=ParseMode.HTML,
                 )
 
-        if key in ("support_link", "playzone_link") and not text.startswith("http"):
+        if key in ("support_link", "playzone_link", "start_image") and not text.startswith("http"):
             _awaiting[_OWNER] = key
             return await message.reply_text(
                 "❌ Please send a valid URL starting with <code>https://</code>.\n"
@@ -178,10 +249,12 @@ else:
 
         await set_clone_setting(_OWNER, key, text)
         label = SETTING_LABELS.get(key, key)
+        preview = text[:120] + ("…" if len(text) > 120 else "")
+
         await message.reply_text(
-            f"✅ <b>{label}</b> updated!\n\n"
-            f"<code>{text[:200]}</code>\n\n"
-            "Changes take effect on the next /start.",
+            f"✅ <b>{label} updated!</b>\n\n"
+            f"<code>{preview}</code>\n\n"
+            f"Changes take effect on the next /start.",
             parse_mode=ParseMode.HTML,
             reply_markup=_panel_kb(),
         )

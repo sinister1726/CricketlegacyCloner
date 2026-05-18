@@ -13,3 +13,8 @@ async def add_group(chat_id: int, title: str) -> bool:
 
 async def total_groups() -> int:
     return await db.db["groups"].count_documents({})
+
+
+async def get_all_groups() -> list:
+    cursor = db.db["groups"].find({}, {"chat_id": 1, "title": 1})
+    return await cursor.to_list(length=None)
