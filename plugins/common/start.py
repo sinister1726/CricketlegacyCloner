@@ -128,6 +128,7 @@ async def start_cmd(client: Client, message):
             )
 
         add_btn_username = me.username if me else ""
+        main_bot_un      = Config.MAIN_BOT_USERNAME.replace("@", "") if Config.MAIN_BOT_USERNAME else "CricketLegacy2Bot"
 
         buttons = InlineKeyboardMarkup([
             [
@@ -140,6 +141,12 @@ async def start_cmd(client: Client, message):
                     url=f"https://t.me/{add_btn_username}?startgroup=true",
                 ) if add_btn_username else
                 InlineKeyboardButton("➕ Add to Group", url=playzone_link),
+            ],
+            [
+                InlineKeyboardButton(
+                    "🧬 Get Your Own Bot Like This",
+                    callback_data="howclone",
+                ),
             ],
         ])
 

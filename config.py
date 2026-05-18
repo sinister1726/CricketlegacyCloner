@@ -49,7 +49,7 @@ class Config:
         if os.getenv("CLONE_OWNER_ID", "0") != "0"
         else None
     )
-    MAIN_BOT_USERNAME      = os.getenv("MAIN_BOT_USERNAME",      "@CricketLegacy2Bot")
+    MAIN_BOT_USERNAME      = os.getenv("MAIN_BOT_USERNAME",      "@LegacyCloneProRO_BOT")
     MAIN_SUPPORT           = os.getenv("MAIN_SUPPORT",           "https://t.me/clg_fun_zone")
     MAIN_SUPPORT_USERNAME  = os.getenv("MAIN_SUPPORT_USERNAME",  "@clg_fun_zone")
 
