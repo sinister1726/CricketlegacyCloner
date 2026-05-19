@@ -8,7 +8,7 @@ from pyrogram.enums import ParseMode
 from pyrogram.errors import FloodWait, MessageNotModified
 
 from database.connection import db
-from Assets.files import RUN_VIDEOS
+from utils.media_helper import get_video_file_id
 
 MATCHMAKING_QUEUE = {}
 DUEL_MATCHES = {}
@@ -60,29 +60,13 @@ def _match_key(a, b):
     return f"{min(a,b)}_{max(a,b)}"
 
 
-def _get_video(key):
-    vids = RUN_VIDEOS.get(str(key), [])
-    if not vids:
-        vids = RUN_VIDEOS.get("1", [])
-    return random.choice(vids) if vids else None
-
-
-async def _safe_send_video(client, chat_id, file_id, caption):
-    try:
-        return await client.send_video(chat_id=chat_id, video=file_id, caption=caption, parse_mode=ParseMode.HTML)
-    except FloodWait as e:
-        await asyncio.sleep(e.value)
-    except Exception:
-        pass
-    try:
-        return await client.send_animation(chat_id=chat_id, animation=file_id, caption=caption, parse_mode=ParseMode.HTML)
-    except Exception:
-        pass
-    try:
-        return await client.send_message(chat_id, caption, parse_mode=ParseMode.HTML)
-    except Exception:
-        pass
-    return None
+async def _safe_send_video(client, chat_id, video_key, caption):
+    from utils.media_helper import send_video_or_fallback
+    # Fall back to key "1" if the requested key has no media
+    from Assets.files import RUN_VIDEOS
+    if not RUN_VIDEOS.get(str(video_key)):
+        video_key = "1"
+    return await send_video_or_fallback(client, chat_id, "run", video_key, caption)
 
 
 async def _safe_delete(client, chat_id, msg_id):
@@ -172,9 +156,8 @@ async def _process_ball(client, match):
         prev_key = "last_vid_a" if uid == match["player_a"] else "last_vid_b"
         await _safe_delete(client, uid, match.get(prev_key))
 
-    file_id = _get_video(video_key)
-    msg_a = await _safe_send_video(client, match["player_a"], file_id, result_line)
-    msg_b = await _safe_send_video(client, match["player_b"], file_id, result_line)
+    msg_a = await _safe_send_video(client, match["player_a"], video_key, result_line)
+    msg_b = await _safe_send_video(client, match["player_b"], video_key, result_line)
     match["last_vid_a"] = msg_a.id if msg_a else None
     match["last_vid_b"] = msg_b.id if msg_b else None
 

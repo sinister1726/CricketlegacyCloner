@@ -92,35 +92,12 @@ async def _safe_send_msg(client, chat_id, text, parse_mode=ParseMode.HTML, reply
 
 
 async def _send_achievement(client, chat_id, key, caption):
-    from Assets.files import ACHIEVE_VIDEOS, ACHIEVE_IMG
-    videos = [v for v in ACHIEVE_VIDEOS.get(key, []) if v and not v.startswith("FILE_ID")]
-    if videos:
-        file_id = random.choice(videos)
-        try:
-            await client.send_video(chat_id=chat_id, video=file_id,
-                                    caption=caption, parse_mode=ParseMode.HTML)
-            return
-        except FloodWait as e:
-            await asyncio.sleep(e.value)
-        except Exception:
-            pass
-        try:
-            await client.send_animation(chat_id=chat_id, animation=file_id,
-                                        caption=caption, parse_mode=ParseMode.HTML)
-            return
-        except FloodWait as e:
-            await asyncio.sleep(e.value)
-        except Exception:
-            pass
-    try:
-        await client.send_photo(chat_id=chat_id, photo=ACHIEVE_IMG,
-                                caption=caption, parse_mode=ParseMode.HTML)
-        return
-    except FloodWait as e:
-        await asyncio.sleep(e.value)
-    except Exception:
-        pass
-    await _safe_send_msg(client, chat_id, caption)
+    from Assets.files import ACHIEVE_IMG
+    from utils.media_helper import send_video_or_fallback
+    await send_video_or_fallback(
+        client, chat_id, "achieve", key, caption,
+        fallback_photo=ACHIEVE_IMG,
+    )
 
 
 async def solo_advance_ball(match, result, credit_bowler=True):

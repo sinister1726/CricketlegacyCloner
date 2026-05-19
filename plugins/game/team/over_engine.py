@@ -208,7 +208,8 @@ async def announce_achievement_group(client, chat_id, achievement, match):
 
 
 async def _send_achievement_media(client, chat_id, achieve_type, caption):
-    from Assets.files import ACHIEVE_VIDEOS, ACHIEVE_IMG
+    from Assets.files import ACHIEVE_IMG
+    from utils.media_helper import send_video_or_fallback
 
     _type_map = {
         "BAT_50": 50, "BAT_100": 100, "BAT_150": 150, "BAT_250": 250,
@@ -219,21 +220,12 @@ async def _send_achievement_media(client, chat_id, achieve_type, caption):
     key = _type_map.get(achieve_type)
 
     if key is not None:
-        videos = ACHIEVE_VIDEOS.get(key, [])
-        if videos:
-            file_id = random.choice(videos)
-            try:
-                await client.send_video(chat_id=chat_id, video=file_id,
-                                        caption=caption, parse_mode=ParseMode.HTML)
-                return
-            except Exception:
-                pass
-            try:
-                await client.send_animation(chat_id=chat_id, animation=file_id,
-                                            caption=caption, parse_mode=ParseMode.HTML)
-                return
-            except Exception:
-                pass
+        result = await send_video_or_fallback(
+            client, chat_id, "achieve", key, caption,
+            fallback_photo=ACHIEVE_IMG,
+        )
+        if result:
+            return
     try:
         await client.send_photo(chat_id=chat_id, photo=ACHIEVE_IMG,
                                 caption=caption, parse_mode=ParseMode.HTML)

@@ -6,7 +6,7 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
 from pyrogram.enums import ParseMode
 
-from Assets.files import RUN_VIDEOS
+from utils.media_helper import send_video_or_fallback
 from plugins.game.team import ACTIVE_MATCHES
 from plugins.game.team.over_engine import advance_ball
 from plugins.game.team.timeouts import start_timer
@@ -24,42 +24,9 @@ def get_mention(match, user_id):
     return f'<a href="tg://user?id={user_id}">{safe_name}</a>'
 
 async def try_send_video(client, chat_id, key, caption, reply_markup=None):
-    video_list = RUN_VIDEOS.get(str(key), [])
-    if not video_list:
-        return await client.send_message(chat_id, caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
-
-    file_id = random.choice(video_list)
-    if not file_id or file_id.startswith("FILE_ID"):
-        return await client.send_message(chat_id, caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
-
-    try:
-        return await client.send_video(
-            chat_id=chat_id,
-            video=file_id,
-            caption=caption,
-            reply_markup=reply_markup,
-            parse_mode=ParseMode.HTML
-        )
-    except Exception as e:
-        err = str(e).upper()
-        if "ANIMATION" in err or "CONTENT_TYPE" in err or "VIDEO_CONTENT_REQUIRED" in err:
-            try:
-                return await client.send_animation(
-                    chat_id=chat_id,
-                    animation=file_id,
-                    caption=caption,
-                    reply_markup=reply_markup,
-                    parse_mode=ParseMode.HTML
-                )
-            except Exception as anim_e:
-                print(f"❌ Both media types failed: {anim_e}")
-
-        return await client.send_message(
-            chat_id=chat_id,
-            text=caption,
-            reply_markup=reply_markup,
-            parse_mode=ParseMode.HTML
-        )
+    return await send_video_or_fallback(
+        client, chat_id, "run", key, caption, reply_markup=reply_markup
+    )
 
 async def send_result_visuals(client, chat_id, key, caption):
     await try_send_video(client, chat_id, key, caption)

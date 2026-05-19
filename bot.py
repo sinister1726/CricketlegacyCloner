@@ -114,6 +114,20 @@ async def start_nexora():
     except Exception as e:
         print("Log channel error:", e)
 
+    # ── Download all source media to disk so clone bots can re-upload ────────
+    if not Config.IS_CLONE:
+        async def _download_media_bg():
+            try:
+                from utils.media_downloader import download_all_source_media
+                count = await download_all_source_media(bot)
+                if count:
+                    print(f"📥 Media downloader: {count} file(s) saved to disk for clone bots.")
+                else:
+                    print("📥 Media downloader: all files already cached on disk.")
+            except Exception as e:
+                print(f"⚠️ Media downloader error: {e}")
+        asyncio.create_task(_download_media_bg())
+
     from plugins.game.team import ACTIVE_MATCHES
     for m in ACTIVE_MATCHES.values():
         if not m.get("client"):

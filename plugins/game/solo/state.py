@@ -7,7 +7,7 @@ from pyrogram.enums import ParseMode
 from pyrogram.errors import FloodWait
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from Assets.files import RUN_VIDEOS
+from utils.media_helper import send_video_or_fallback
 from plugins.game.team import ACTIVE_MATCHES
 
 
@@ -82,43 +82,9 @@ async def safe_send(coro):
 
 
 async def try_send_video(client, chat_id, key, caption, reply_markup=None):
-    video_list = RUN_VIDEOS.get(str(key), [])
-    if video_list:
-        file_id = random.choice(video_list)
-        if file_id and not file_id.startswith("FILE_ID"):
-            try:
-                return await client.send_video(
-                    chat_id=chat_id,
-                    video=file_id,
-                    caption=caption,
-                    reply_markup=reply_markup,
-                    parse_mode=ParseMode.HTML,
-                )
-            except FloodWait as e:
-                await asyncio.sleep(e.value)
-            except Exception:
-                pass
-            try:
-                return await client.send_animation(
-                    chat_id=chat_id,
-                    animation=file_id,
-                    caption=caption,
-                    reply_markup=reply_markup,
-                    parse_mode=ParseMode.HTML,
-                )
-            except FloodWait as e:
-                await asyncio.sleep(e.value)
-            except Exception:
-                pass
-    try:
-        return await client.send_message(
-            chat_id, caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup
-        )
-    except FloodWait as e:
-        await asyncio.sleep(e.value)
-        return await client.send_message(
-            chat_id, caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup
-        )
+    return await send_video_or_fallback(
+        client, chat_id, "run", key, caption, reply_markup=reply_markup
+    )
 
 
 async def send_solo_ball_prompt(client, match):
